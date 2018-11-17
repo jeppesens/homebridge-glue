@@ -1,6 +1,8 @@
 var request = require("request");
 var Service, Characteristic;
 
+var currentStatusOfLock = 'USECURED';
+
 module.exports = function(homebridge) {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
@@ -42,24 +44,23 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
-    this.log(getCharacteristic())
-    request.get({
-        url: this.url + "/Locks/" + this.lockID,
-        auth: { user: this.username, password: this.password }
-    }, function(err, response, body) {
+    // request.get({
+    //     url: this.url + "/Locks/" + this.lockID,
+    //     auth: { user: this.username, password: this.password }
+    // }, function(err, response, body) {
 
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            // var batt = json.BatteryStatusAfter / 255 * 100;
-            this.log("json", json);
-            // callback(null, json.Status); // success
-        }
-        else {
-            this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
-            callback(err);
-        }
-    }.bind(this));
-    callback(null, Characteristic.LockCurrentState.UNKNOWN)
+    //     if (!err && response.statusCode == 200) {
+    //         var json = JSON.parse(body);
+    //         // var batt = json.BatteryStatusAfter / 255 * 100;
+    //         this.log("json", json);
+    //         // callback(null, json.Status); // success
+    //     }
+    //     else {
+    //         this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
+    //         callback(err);
+    //     }
+    // }.bind(this));
+    callback(null, Characteristic.LockCurrentState[currentStatusOfLock]);
 }
 
 LockAccessory.prototype.getCharging = function(callback) {
@@ -112,7 +113,7 @@ LockAccessory.prototype.getLowBatt = function(callback) {
 LockAccessory.prototype.setState = function(state, callback) {
     this.log('state', state)
     var lockState = (state == Characteristic.LockTargetState.SECURED) ? "1" : "0";
-
+    currentStatusOfLock = lockState === "1" ? 'SECURED' : 'UNSECURED';
     this.log("Set state to %s", lockState);
 
     request.post({
