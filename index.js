@@ -42,7 +42,23 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
-    console.log('state in getState', Characteristic.LockTargetState)
+    // this.log('state in getState', Characteristic.LockTargetState)
+    request.get({
+        url: this.url + "/Locks/" + this.lockID,
+        auth: { user: this.username, password: this.password }
+    }, function(err, response, body) {
+
+        if (!err && response.statusCode == 200) {
+            var json = JSON.parse(body);
+            // var batt = json.BatteryStatusAfter / 255 * 100;
+            this.log("json", json);
+            callback(null, batt); // success
+        }
+        else {
+            this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
+            callback(err);
+        }
+    }.bind(this));
     callback(null, Characteristic.LockCurrentState.UNKNOWN)
 }
 
