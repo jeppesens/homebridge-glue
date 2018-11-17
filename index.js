@@ -10,12 +10,12 @@ module.exports = function(homebridge) {
 
 function LockAccessory(log, config) {
     this.log = log;
-    this.name = config["name"];
+    this.name = config["name"] || "Glue Lock";
     this.url = config["url"] || "https://api.gluehome.com/api";
-    this.hubID = config["hub-id"];
-    this.lockID = config["lock-id"];
     this.username = config["username"];
     this.password = config["password"];
+    this.hubID = config["hub-id"] || "" ;
+    this.lockID = config["lock-id"] || "";
     this.lockState = 0;
     this.currentStatusOfLock = 'USECURED'; //Will only work if the status if only changed by homebridge
 
@@ -43,6 +43,28 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
+
+    if (this.hubID === "" || this.lockID === "") {
+
+    request.get({
+        url: this.url + "/Hubs/",
+        auth: { user: this.username, password: this.password }
+    }, function(err, response, body) {
+
+        if (!err && response.statusCode == 200) {
+            var json = JSON.parse(body);
+            this.log("Available hubs and locks: ");
+            for(const hub of json){
+                this.log("hubId: %s, available locks: %s", hub.Id, hub.LockIds.toString())
+            }
+            callback(null, batt); // success
+        }
+        else {
+            this.log("Error with auth (status code %s): %s", response.statusCode, err);
+            callback(err);
+        }
+    }.bind(this));
+    }
     // Only works if the status was last set by Hmebridge and not e.g the Glue app
     callback(null, Characteristic.LockCurrentState[this.currentStatusOfLock]);
 }
