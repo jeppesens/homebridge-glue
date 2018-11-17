@@ -59,7 +59,7 @@ function LockAccessory(log, config) {
             else {
                 this.log("Error with auth (status code %s): %s", response.statusCode, err);
             }
-        })//.bind(this));
+        }.bind(this));
     }
 }
 
