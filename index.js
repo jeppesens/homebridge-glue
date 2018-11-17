@@ -52,7 +52,7 @@ LockAccessory.prototype.getState = function(callback) {
             var json = JSON.parse(body);
             // var batt = json.BatteryStatusAfter / 255 * 100;
             this.log("json", json);
-            callback(null, batt); // success
+            callback(null); // success
         }
         else {
             this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
