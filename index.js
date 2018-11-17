@@ -16,6 +16,7 @@ function LockAccessory(log, config) {
     this.lockID = config["lock-id"];
     this.username = config["username"];
     this.password = config["password"];
+    this.lockState = 0;
 
     this.lockservice = new Service.LockMechanism(this.name);
 
@@ -41,6 +42,7 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
+    console.log('state', Characteristic.LockCurrentState)
     callback(null, Characteristic.LockCurrentState.UNKNOWN)
 }
 
@@ -110,6 +112,7 @@ LockAccessory.prototype.setState = function(state, callback) {
 
             // we succeeded, so update the "current" state as well
             this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
+            this.log('new state', Characteristic.LockCurrentState)
 
             callback(null); // success
         }
