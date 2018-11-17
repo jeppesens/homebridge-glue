@@ -42,7 +42,7 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
-    // this.log('state in getState', Characteristic.LockTargetState)
+    this.log('state in getState', Characteristic)
     request.get({
         url: this.url + "/Locks/" + this.lockID,
         auth: { user: this.username, password: this.password }
