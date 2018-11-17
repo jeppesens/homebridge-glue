@@ -39,32 +39,32 @@ function LockAccessory(log, config) {
     this.battservice
         .getCharacteristic(Characteristic.StatusLowBattery)
         .on('get', this.getLowBatt.bind(this));
+
+    if (this.hubID === "" || this.lockID === "") {
+        request.get({
+            url: this.url + "/Hubs/",
+            auth: { user: this.username, password: this.password }
+        }, function(err, response, body) {
+
+            if (!err && response.statusCode == 200) {
+                var json = JSON.parse(body);
+                this.log("Available hubs and locks: ");
+                for(const hub of json) {
+                    this.log("hubId: %s, available lockIds: %s", hub.Id, hub.LockIds.toString());
+                }
+                this.log("Will select the first hub and first lock, otherwise set it in config.json as: hub-id: 'xxxxxx', lock-id: 'xxxxxx' ");
+                this.hubID = json[0].Id;
+                this.lockID = json[0].LockIds[0];
+            }
+            else {
+                this.log("Error with auth (status code %s): %s", response.statusCode, err);
+            }
+        })//.bind(this));
+    }
 }
 
 
 LockAccessory.prototype.getState = function(callback) {
-
-    if (this.hubID === "" || this.lockID === "") {
-
-    request.get({
-        url: this.url + "/Hubs/",
-        auth: { user: this.username, password: this.password }
-    }, function(err, response, body) {
-
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            this.log("Available hubs and locks: ");
-            for(const hub of json){
-                this.log("hubId: %s, available locks: %s", hub.Id, hub.LockIds.toString())
-            }
-            callback(null, batt); // success
-        }
-        else {
-            this.log("Error with auth (status code %s): %s", response.statusCode, err);
-            callback(err);
-        }
-    }.bind(this));
-    }
     // Only works if the status was last set by Hmebridge and not e.g the Glue app
     callback(null, Characteristic.LockCurrentState[this.currentStatusOfLock]);
 }
