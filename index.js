@@ -42,7 +42,7 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
-    console.log('state', Characteristic.LockCurrentState)
+    console.log('state in getState', Characteristic.LockTargetState)
     callback(null, Characteristic.LockCurrentState.UNKNOWN)
 }
 
@@ -112,7 +112,7 @@ LockAccessory.prototype.setState = function(state, callback) {
 
             // we succeeded, so update the "current" state as well
             this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
-            this.log('new state', Characteristic.LockCurrentState)
+            // this.log('new state', Characteristic.LockCurrentState)
 
             callback(null); // success
         }
