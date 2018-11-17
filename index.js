@@ -1,8 +1,6 @@
 var request = require("request");
 var Service, Characteristic;
 
-var currentStatusOfLock = 'USECURED';
-
 module.exports = function(homebridge) {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
@@ -19,6 +17,7 @@ function LockAccessory(log, config) {
     this.username = config["username"];
     this.password = config["password"];
     this.lockState = 0;
+    this.currentStatusOfLock = 'USECURED'; //Will only work if the status if only changed by homebridge
 
     this.lockservice = new Service.LockMechanism(this.name);
 
@@ -44,23 +43,8 @@ function LockAccessory(log, config) {
 
 
 LockAccessory.prototype.getState = function(callback) {
-    // request.get({
-    //     url: this.url + "/Locks/" + this.lockID,
-    //     auth: { user: this.username, password: this.password }
-    // }, function(err, response, body) {
-
-    //     if (!err && response.statusCode == 200) {
-    //         var json = JSON.parse(body);
-    //         // var batt = json.BatteryStatusAfter / 255 * 100;
-    //         this.log("json", json);
-    //         // callback(null, json.Status); // success
-    //     }
-    //     else {
-    //         this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
-    //         callback(err);
-    //     }
-    // }.bind(this));
-    callback(null, Characteristic.LockCurrentState[currentStatusOfLock]);
+    // Only works if the status was last set by Hmebridge and not e.g the Glue app
+    callback(null, Characteristic.LockCurrentState[this.currentStatusOfLock]);
 }
 
 LockAccessory.prototype.getCharging = function(callback) {
@@ -113,7 +97,8 @@ LockAccessory.prototype.getLowBatt = function(callback) {
 LockAccessory.prototype.setState = function(state, callback) {
     this.log('state', state)
     var lockState = (state == Characteristic.LockTargetState.SECURED) ? "1" : "0";
-    currentStatusOfLock = lockState === "1" ? 'SECURED' : 'UNSECURED';
+    // setting status so we can remember if it was locked or not.
+    this.currentStatusOfLock = lockState === "1" ? 'SECURED' : 'UNSECURED';
     this.log("Set state to %s", lockState);
 
     request.post({
