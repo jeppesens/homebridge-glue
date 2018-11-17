@@ -98,7 +98,6 @@ LockAccessory.prototype.setState = function(state, callback) {
     this.log('state', state)
     var lockState = (state == Characteristic.LockTargetState.SECURED) ? "1" : "0";
     // setting status so we can remember if it was locked or not.
-    this.currentStatusOfLock = lockState === "1" ? 'SECURED' : 'UNSECURED';
     this.log("Set state to %s", lockState);
 
     request.post({
@@ -116,6 +115,7 @@ LockAccessory.prototype.setState = function(state, callback) {
             this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
             // this.log('new state', Characteristic.LockCurrentState)
 
+            this.currentStatusOfLock = lockState === "1" ? 'SECURED' : 'UNSECURED';
             callback(null); // success
         }
         else {
