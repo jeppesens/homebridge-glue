@@ -1,16 +1,16 @@
 {
     "name": "homebridge-glue",
-    "version": "1.0.0",
+    "version": "1.1.1",
     "description": "Glue Smart Lock integration for Homebridge",
     "author": {
-        "name": "Siavash Ghorbani"
+        "name": "Tobias Nilsson"
     },
     "keywords": [
         "homebridge-plugin"
     ],
     "repository": {
         "type": "git",
-        "url": "https://github.com/siavashg/homebridge-glue"
+        "url": "https://github.com/nilssontobias/homebridge-glue"
     },
     "engines": {
         "node": ">=0.12.0",
