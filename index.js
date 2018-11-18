@@ -14,8 +14,8 @@ function LockAccessory(log, config) {
     this.url = config["url"] || "https://api.gluehome.com/api";
     this.username = config["username"];
     this.password = config["password"];
-    this.hubID = config["hub-id"] || "" ;
-    this.lockID = config["lock-id"] || "";
+    this.hubID = config["hub-id"];
+    this.lockID = config["lock-id"];
     this.lockState = 0;
     this.currentStatusOfLock = 'USECURED'; //Will only work if the status if only changed by homebridge
 
@@ -40,7 +40,8 @@ function LockAccessory(log, config) {
         .getCharacteristic(Characteristic.StatusLowBattery)
         .on('get', this.getLowBatt.bind(this));
 
-    if (this.hubID === "" || this.lockID === "") {
+    this.log("Initalizing Glue Lock")
+    if (!this.hubID || !this.lockID) {
         request.get({
             url: this.url + "/Hubs/",
             auth: { user: this.username, password: this.password }
@@ -52,7 +53,7 @@ function LockAccessory(log, config) {
                 for(const hub of json) {
                     this.log("hubId: %s, available lockIds: %s", hub.Id, hub.LockIds.toString());
                 }
-                this.log("Will select the first hub and first lock, otherwise set it in config.json as: hub-id: 'xxxxxx', lock-id: 'xxxxxx' ");
+                this.log("Will select the first hub and first lock, otherwise set it in config.json as: hub-id: '%s', lock-id: '%s' ", json[0].Id, json[0].LockIds[0]);
                 this.hubID = json[0].Id;
                 this.lockID = json[0].LockIds[0];
             }
