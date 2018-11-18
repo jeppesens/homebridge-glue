@@ -2,7 +2,7 @@
 ### Homebridge integration for Glue smart locks
 
 # Installation
-intall npm i -g https://github.com/nilssontobias/homebridge-glue.git
+intall npm i -g homebridge-glue
 
 # Configuration
 config.json e.g
