@@ -6,7 +6,12 @@
         "name": "Tobias Nilsson"
     },
     "keywords": [
-        "homebridge-plugin"
+        "homebridge-plugin",
+        "glue",
+        "gluehome",
+        "homebridge",
+        "lock",
+        "homekit"
     ],
     "repository": {
         "type": "git",
