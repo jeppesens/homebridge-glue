@@ -36,4 +36,10 @@ https://github.com/nfarina/homebridge
 https://www.gluehome.com
 
 
-### Based on work from https://github.com/siavashg/homebridge-glue
+
+
+
+
+
+
+**Based on work from [siavashg](https://github.com/siavashg/homebridge-glue)**
