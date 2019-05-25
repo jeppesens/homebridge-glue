@@ -43,55 +43,16 @@ function LockAccessory(log, config) {
         .getCharacteristic(Characteristic.StatusLowBattery)
         .on('get', this.getLowBattery.bind(this));
 
-    this.checkEvents = () => {
-        this.log("Checking for new events.");
-        new Promise((resolve, reject) => {
-            request.get({
-                url: this.url + "/Events/",
-                auth: { user: this.username, password: this.password }
-            }, function(err, response, body) {    
-                if (!err && response.statusCode == 200) {
-                    var Events = JSON.parse(body);
-                    this.log("Finding events newer than: ", this.lastEventCheck);
-                    var eventsToCheck = Events.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + "Z") > this.lastEventCheck);
-                    resolve(eventsToCheck[0])
-                } else {
-                    reject(err)
-                }
-            }.bind(this))
-        })
-        .catch(err => this.log(err))
-        .then(event => {
-            if (event) {
-                return event;
-            } else {
-                throw new Error("No new events.");
-            }
-        })
-        .then(({EventTypeId}) => new Promise((resolve, reject) => {
-            request.get({
-                url: this.url + "/EventTypes/" + EventTypeId,
-                auth: { user: this.username, password: this.password }
-            }, function(err, response, body) {    
-                if (!err && response.statusCode == 200) {
-                    var EventType = JSON.parse(body);
-                    var Description = EventType.Description;
-                    resolve(Description)
-                } else {
-                    this.log(err);
-                    reject(err)
-                }
-            }.bind(this))
-        }))
-        .then(EventAction => {
-            var state = EventAction === "Locked" ? "SECURED" : "UNSECURED";
-            this.currentStatusOfLock = state;
-            this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
-            this.lastEventCheck = new Date();
-        })
-        .catch(() => {})
-    }
+    this.init();
 
+    if (this.checkEventsIsEnabled) {
+        setInterval(() => {
+            this.checkEvents();
+        }, this.checkEventsInterval * 1000);
+    }
+}
+
+LockAccessory.prototype.init = function() {
     this.log("Initalizing Glue Lock")
     new Promise(resolve => {
         if (!this.hubID || !this.lockID) {
@@ -117,12 +78,6 @@ function LockAccessory(log, config) {
             resolve();
         }
     }).then(() => this.checkEvents());
-
-    if (this.checkEventsIsEnabled) {
-        setInterval(() => {
-            this.checkEvents();
-        }, this.checkEventsInterval * 1000);
-    }
 }
 
 LockAccessory.prototype.getState = function(callback) {
@@ -198,6 +153,56 @@ LockAccessory.prototype.setState = function(state, callback) {
         }
     }.bind(this));
 }
+
+LockAccessory.prototype.checkEvents = function() {
+    new Promise((resolve, reject) => {
+        request.get({
+            url: this.url + "/Events/",
+            auth: { user: this.username, password: this.password }
+        }, function(err, response, body) {    
+            if (!err && response.statusCode == 200) {
+                var Events = JSON.parse(body);
+                var eventsToCheck = Events.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + "Z") > this.lastEventCheck);
+                resolve(eventsToCheck[0])
+            } else {
+                reject(err)
+            }
+        }.bind(this))
+    })
+    .catch(err => this.log(err))
+    .then(event => {
+        if (event) {
+            this.log('Found new event.');
+            return event;
+        } else {
+            throw new Error("No new events.");
+        }
+    })
+    .then(({EventTypeId}) => new Promise((resolve, reject) => {
+        request.get({
+            url: this.url + "/EventTypes/" + EventTypeId,
+            auth: { user: this.username, password: this.password }
+        }, function(err, response, body) {    
+            if (!err && response.statusCode == 200) {
+                var EventType = JSON.parse(body);
+                var Description = EventType.Description;
+                resolve(Description)
+            } else {
+                this.log(err);
+                reject(err)
+            }
+        }.bind(this))
+    }))
+    .then(EventAction => {
+        var state = EventAction === "Locked" ? "SECURED" : "UNSECURED";
+        this.currentStatusOfLock = state;
+        this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
+        this.lastEventCheck = new Date();
+    })
+    .catch(() => {})
+}
+
+
 
 LockAccessory.prototype.getServices = function() {
     return [this.lockService, this.batteryService];
