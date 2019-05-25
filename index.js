@@ -22,26 +22,26 @@ function LockAccessory(log, config) {
     this.checkEventsIsEnabled = config["check-for-events"] || true;
     this.checkEventsInterval = config["check-for-events-interval"] || 10;
 
-    this.lockservice = new Service.LockMechanism(this.name);
+    this.lockService = new Service.LockMechanism(this.name);
 
-    this.lockservice
+    this.lockService
         .getCharacteristic(Characteristic.LockCurrentState)
         .on('get', this.getState.bind(this));
 
-    this.lockservice
+    this.lockService
         .getCharacteristic(Characteristic.LockTargetState)
         .on('get', this.getState.bind(this))
         .on('set', this.setState.bind(this));
 
-    this.battservice = new Service.BatteryService(this.name);
+    this.batteryService = new Service.BatteryService(this.name);
 
-    this.battservice
+    this.batteryService
         .getCharacteristic(Characteristic.BatteryLevel)
         .on('get', this.getBattery.bind(this));
 
-    this.battservice
+    this.batteryService
         .getCharacteristic(Characteristic.StatusLowBattery)
-        .on('get', this.getLowBatt.bind(this));
+        .on('get', this.getLowBattery.bind(this));
 
     this.checkEvents = () => {
         this.log("Checking for new events.");
@@ -86,7 +86,7 @@ function LockAccessory(log, config) {
         .then(EventAction => {
             var state = EventAction === "Locked" ? "SECURED" : "UNSECURED";
             this.currentStatusOfLock = state;
-            this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
+            this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
             this.lastEventCheck = new Date();
         })
         .catch(() => {})
@@ -134,47 +134,38 @@ LockAccessory.prototype.getCharging = function(callback) {
     callback(null, Characteristic.ChargingState.NOT_CHARGING);
 }
 
-LockAccessory.prototype.getBattery = function(callback) {
-    this.log("Getting battery level");
-
-    request.get({
-        url: this.url + "/Locks/" + this.lockID,
-        auth: { user: this.username, password: this.password }
-    }, function(err, response, body) {
-
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            var batt = json.BatteryStatusAfter / 255 * 100;
-            this.log("Battery level is %s", batt);
-            callback(null, batt); // success
-        }
-        else {
-            this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
-            callback(err);
-        }
-    }.bind(this));
+LockAccessory.prototype.getBatteryLevel = function() {
+    return new Promise((resolve, reject) => {
+        this.log("Getting battery level");
+        request.get({
+            url: this.url + "/Locks/" + this.lockID,
+            auth: { user: this.username, password: this.password }
+        }, function(err, response, body) {
+            if (!err && response.statusCode == 200) {
+                var json = JSON.parse(body);
+                var batteryLevel = json.BatteryStatusAfter / 255 * 100;
+                this.log("Battery level is %s", batteryLevel);
+                resolve(batteryLevel);
+            }
+            else {
+                this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
+                reject(err);
+            }
+        }.bind(this));
+    })
 }
 
-LockAccessory.prototype.getLowBatt = function(callback) {
-    this.log("Getting current battery...");
+LockAccessory.prototype.getBattery = function(callback) {
+    this.getBatteryLevel()
+    .then(BatteryLevel => callback(null, BatteryLevel))
+    .catch(err => callback(err))
+}
 
-    request.get({
-        url: this.url + "/Locks/" + this.lockID,
-        auth: { user: this.username, password: this.password }
-    }, function(err, response, body) {
-
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            var batt = json.BatteryStatusAfter / 255 * 100;
-            this.log("Lock battery is %s", batt);
-            var low = (batt > 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW;
-            callback(null, low); // success
-        }
-        else {
-            this.log("Error getting battery (status code %s): %s", response.statusCode, err);
-            callback(err);
-        }
-    }.bind(this));
+LockAccessory.prototype.getLowBattery = function(callback) {
+    this.getBatteryLevel()
+    .then(batteryLevel =>  (batteryLevel > 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW)
+    .then(batteryLevel => callback(null, batteryLevel))
+    .catch(err => callback(err));
 }
 
 LockAccessory.prototype.setState = function(state, callback) {
@@ -195,7 +186,7 @@ LockAccessory.prototype.setState = function(state, callback) {
             this.log("State change complete.");
 
             // we succeeded, so update the "current" state as well
-            this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
+            this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
             // this.log('new state', Characteristic.LockCurrentState)
 
             callback(null); // success
@@ -209,5 +200,5 @@ LockAccessory.prototype.setState = function(state, callback) {
 }
 
 LockAccessory.prototype.getServices = function() {
-    return [this.lockservice, this.battservice];
+    return [this.lockService, this.batteryService];
 }
