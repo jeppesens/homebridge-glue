@@ -19,6 +19,8 @@ function LockAccessory(log, config) {
     this.lockState = 0;
     this.currentStatusOfLock = 'UNSECURED'; //Will only work if the status if only changed by homebridge
     this.lastEventCheck = new Date(0);
+    this.checkEventsIsEnabled = config["check-for-events"] || true;
+    this.checkEventsInterval = config["check-for-events-interval"] || 10;
 
     this.lockservice = new Service.LockMechanism(this.name);
 
@@ -116,10 +118,11 @@ function LockAccessory(log, config) {
         }
     }).then(() => this.checkEvents());
 
-    setInterval(() => {
-        this.checkEvents();
-    }, 10 * 1000); // Every 10 seconds.
-
+    if (this.checkEventsIsEnabled) {
+        setInterval(() => {
+            this.checkEvents();
+        }, this.checkEventsInterval * 1000);
+    }
 }
 
 LockAccessory.prototype.getState = function(callback) {

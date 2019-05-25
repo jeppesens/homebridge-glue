@@ -5,7 +5,7 @@
 install npm i -g homebridge-glue
 
 # Configuration
-config.json e.g
+config.json example
 ```
 {
   ...
@@ -27,11 +27,11 @@ config.json e.g
 ```
 
 ## Selecting Hub and Lock
-If hubID or lockId is unknown it will select the first available lock of the first hub. If you only have one. It will work without configuration.
+If hubId or lockId is unknown it will select the first available lock of the first hub. If you only have one. It will work without configuration.
 
 
 ## Events
-Glue have events that they list in the app. This plugin checks those events every 10 seconds and updates the status in Homekit accordingly. Keep in mind that manually locking or unlocking the door doesn't trigger an event.
+Glue have events that they list in the app. This plugin checks those events every 10 seconds and updates the status accordingly. Keep in mind that manually locking or unlocking the door doesn't trigger an event.
 
 
 ## Homebridge
