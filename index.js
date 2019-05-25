@@ -17,7 +17,8 @@ function LockAccessory(log, config) {
     this.hubID = config["hub-id"];
     this.lockID = config["lock-id"];
     this.lockState = 0;
-    this.currentStatusOfLock = 'USECURED'; //Will only work if the status if only changed by homebridge
+    this.currentStatusOfLock = 'UNSECURED'; //Will only work if the status if only changed by homebridge
+    this.lastEventCheck = new Date(0);
 
     this.lockservice = new Service.LockMechanism(this.name);
 
@@ -40,33 +41,89 @@ function LockAccessory(log, config) {
         .getCharacteristic(Characteristic.StatusLowBattery)
         .on('get', this.getLowBatt.bind(this));
 
-    this.log("Initalizing Glue Lock")
-    if (!this.hubID || !this.lockID) {
-        request.get({
-            url: this.url + "/Hubs/",
-            auth: { user: this.username, password: this.password }
-        }, function(err, response, body) {
-
-            if (!err && response.statusCode == 200) {
-                var json = JSON.parse(body);
-                this.log("Available hubs and locks: ");
-                for(const hub of json) {
-                    this.log("hubId: %s, available lockIds: %s", hub.Id, hub.LockIds.toString());
+    this.checkEvents = () => {
+        this.log("Checking for new events.");
+        new Promise((resolve, reject) => {
+            request.get({
+                url: this.url + "/Events/",
+                auth: { user: this.username, password: this.password }
+            }, function(err, response, body) {    
+                if (!err && response.statusCode == 200) {
+                    var Events = JSON.parse(body);
+                    this.log("Finding events newer than: ", this.lastEventCheck);
+                    var eventsToCheck = Events.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + "Z") > this.lastEventCheck);
+                    resolve(eventsToCheck[0])
+                } else {
+                    reject(err)
                 }
-                this.log("Will select the first hub and first lock, otherwise set it in config.json as: hub-id: '%s', lock-id: '%s' ", json[0].Id, json[0].LockIds[0]);
-                this.hubID = json[0].Id;
-                this.lockID = json[0].LockIds[0];
+            }.bind(this))
+        })
+        .catch(err => this.log(err))
+        .then(event => {
+            if (event) {
+                return event;
+            } else {
+                throw new Error("No new events.");
             }
-            else {
-                this.log("Error with auth (status code %s): %s", response.statusCode, err);
-            }
-        }.bind(this));
+        })
+        .then(({EventTypeId}) => new Promise((resolve, reject) => {
+            request.get({
+                url: this.url + "/EventTypes/" + EventTypeId,
+                auth: { user: this.username, password: this.password }
+            }, function(err, response, body) {    
+                if (!err && response.statusCode == 200) {
+                    var EventType = JSON.parse(body);
+                    var Description = EventType.Description;
+                    resolve(Description)
+                } else {
+                    this.log(err);
+                    reject(err)
+                }
+            }.bind(this))
+        }))
+        .then(EventAction => {
+            var state = EventAction === "Locked" ? "SECURED" : "UNSECURED";
+            this.currentStatusOfLock = state;
+            this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
+            this.lastEventCheck = new Date();
+        })
+        .catch(() => {})
     }
+
+    this.log("Initalizing Glue Lock")
+    new Promise(resolve => {
+        if (!this.hubID || !this.lockID) {
+            request.get({
+                url: this.url + "/Hubs/",
+                auth: { user: this.username, password: this.password }
+            }, function(err, response, body) {
+                if (!err && response.statusCode == 200) {
+                    var json = JSON.parse(body);
+                    this.log("Available hubs and locks: ");
+                    for(const hub of json) {
+                        this.log("hubId: %s, available lockIds: %s", hub.Id, hub.LockIds.toString());
+                    }
+                    this.log("Will select the first hub and first lock, otherwise set it in config.json as: hub-id: '%s', lock-id: '%s' ", json[0].Id, json[0].LockIds[0]);
+                    this.hubID = json[0].Id;
+                    this.lockID = json[0].LockIds[0];
+                } else {
+                    this.log("Error with auth (status code %s): %s", response.statusCode, err);
+                }
+                resolve()
+            }.bind(this));
+        } else {
+            resolve();
+        }
+    }).then(() => this.checkEvents());
+
+    setInterval(() => {
+        this.checkEvents();
+    }, 10 * 1000); // Every 10 seconds.
+
 }
 
-
 LockAccessory.prototype.getState = function(callback) {
-    // Only works if the status was last set by Hmebridge and not e.g the Glue app
+    // Only works if the status was last set by Homebridge and not e.g the Glue app
     callback(null, Characteristic.LockCurrentState[this.currentStatusOfLock]);
 }
 
