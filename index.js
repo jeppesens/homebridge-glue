@@ -11,21 +11,22 @@ module.exports = function(homebridge) {
 const delay = (milliseconds) => new Promise(r => setTimeout(r, milliseconds * 1000));
 
 const lockStateEnum = {
-    'Locked': 'SECURED',
-    'Unlocked': 'UNSECURED',
+    'Locked': 1,
+    'Unlocked': 0,
     'SECURED': 1,
     'UNSECURED': 0,
-    '1': 'SECURED',
-    '0': 'UNSECURED',
+    '1': 'Locked',
+    '0': 'Unlocked',
 }
 
 class LockAccessory {
     constructor(log, config) {
         this.log = log;
         this.config = config;
-        this.lastEventCheck = new Date(0);
         this.lockService = new Service.LockMechanism(this.name);
+        this.batteryService = new Service.BatteryService(this.name);
         this.currentStatusOfLock = lockStateEnum.Unlocked;
+        this.lastEventCheck = new Date(0);
 
         this.init();
         this.listenToEvents();
@@ -52,8 +53,6 @@ class LockAccessory {
             .on('get', this.getState.bind(this))
             .on('set', this.setState.bind(this));
 
-        this.batteryService = new Service.BatteryService(this.name);
-
         this.batteryService
             .getCharacteristic(Characteristic.BatteryLevel)
             .on('get', this.getBattery.bind(this));
@@ -70,13 +69,6 @@ class LockAccessory {
         return this.config["url"] || "https://api.gluehome.com/api";
     }
 
-    get lastEventCheck() {
-        return this.lastEventCheckDate;
-    }
-    set lastEventCheck(data) {
-        this.lastEventCheckDate = new Date(data);
-    }
-
     get checkEventsInterval() {
         return this.config["check-for-events-interval"] || 10;
     }
@@ -88,7 +80,6 @@ class LockAccessory {
         return axios.create({
             baseURL: this.url,
             auth: { username: this.config.username, password: this.config.password },
-            // headers: { 'Content-Type': 'application/json' },
         })
     }
 
@@ -128,7 +119,7 @@ class LockAccessory {
         return this.currentStatusOfLockHolder;
     }
     set currentStatusOfLock(state) {
-        this.currentStatusOfLockHolder = state;
+        this.currentStatusOfLockHolder = state; // 1 or 0.
         this.lastEventCheck = new Date();
         this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
     }
@@ -137,7 +128,7 @@ class LockAccessory {
         return this.client.get('/Locks/' + this.lockID)
             .then(({data}) => data.BatteryStatusAfter)
             .then(batteryStatus => batteryStatus / 255 * 100)
-            .then(batteryLevel => this.log(`Battery level is ${batteryLevel}`))
+            .then(batteryLevel => {this.log(`Battery level is ${batteryLevel}`); return batteryLevel})
             .catch(err => this.log(`Error getting battery level (status code ${(err.response || {}).status}): "${err.message}".`));
     }
 
@@ -149,7 +140,7 @@ class LockAccessory {
 
     async getLowBattery(callback) {
         return this.getBatteryLevel()
-            .then(batteryLevel =>  (batteryLevel > 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW)
+            .then(batteryLevel =>  (batteryLevel >= 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW)
             .then(batteryLevel => callback(null, batteryLevel))
             .catch(err => callback(err));
     }
@@ -163,7 +154,7 @@ class LockAccessory {
         .then(({data}) => data)
         .then(({Status}) => {
             if (Status === 1) {
-                this.currentStatusOfLock = lockStateEnum[HubCommand];
+                this.currentStatusOfLock = HubCommand; // 1 or 0.
                 callback(null);
                 return `State change completed and set to ${lockStateEnum[HubCommand]}.`;
             } else {
@@ -180,7 +171,7 @@ class LockAccessory {
     
     checkEvents() {
         this.client.get('/Events/')
-        .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + "Z") > this.lastEventCheck))
+        .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + 'Z') > this.lastEventCheck))
         .then(events => events[0])
         .then(({EventTypeId}) => this.client.get('/EventTypes/' + EventTypeId)
             .then(({data}) => data.Description))
