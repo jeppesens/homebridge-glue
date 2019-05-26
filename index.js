@@ -11,24 +11,25 @@ module.exports = function(homebridge) {
 const delay = (milliseconds) => new Promise(r => setTimeout(r, milliseconds * 1000));
 
 const lockStateEnum = {
-    'Locked': 1,
-    'Unlocked': 0,
-    'SECURED': 1,
-    'UNSECURED': 0,
-    '1': 'Locked',
-    '0': 'Unlocked',
+    'Locked': "1",
+    'Unlocked': "0",
+    'SECURED': "1",
+    'UNSECURED': "0",
+    '1': 'SECURED',
+    '0': 'UNSECURED',
 }
 
 class LockAccessory {
     constructor(log, config) {
         this.log = log;
         this.config = config;
+        this.hubID = config["hub-id"];
+        this.lockID = config["lock-id"];
+        this.currentStatusOfLockHolder = Characteristic.ChargingState.UNKNOWN;
+        this.lastEventCheck = new Date(0);
         this.lockService = new Service.LockMechanism(this.name);
         this.batteryService = new Service.BatteryService(this.name);
-        this.currentStatusOfLock = lockStateEnum.Unlocked;
-        this.lastEventCheck = new Date(0);
-
-        this.init();
+        this.init()
         this.listenToEvents();
     }
 
@@ -84,8 +85,6 @@ class LockAccessory {
     }
 
     async init() {
-        this.hubID = this.config["hub-id"];
-        this.lockID = this.config["lock-id"];
         this.log("Initalizing Glue Lock")
         if (!this.hubID || !this.lockID) {
             await this.client.get('/Hubs')
@@ -108,22 +107,26 @@ class LockAccessory {
 
     getState(callback) {
         // Only works if the status was last set by Homebridge or the Glue app NOT if manually unlocked or locked.
-        callback(null, Characteristic.LockCurrentState[this.currentStatusOfLock]);
+        callback(null, Characteristic.LockCurrentState[this.lockStatus]);
     }
 
     getCharging(callback) {
         callback(null, Characteristic.ChargingState.NOT_CHARGING);
     }
 
+    get lockStatus() {
+        return lockStateEnum[this.currentStatusOfLock];
+    }
+
     get currentStatusOfLock() {
         return this.currentStatusOfLockHolder;
     }
     set currentStatusOfLock(state) {
-        this.currentStatusOfLockHolder = state; // 1 or 0.
+        this.currentStatusOfLockHolder = state; // "1" or "0".
         this.lastEventCheck = new Date();
         this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
     }
-    
+
     async getBatteryLevel() {
         return this.client.get('/Locks/' + this.lockID)
             .then(({data}) => data.BatteryStatusAfter)
@@ -168,13 +171,14 @@ class LockAccessory {
     getServices() {
         return [this.lockService, this.batteryService];
     }
-    
+
     checkEvents() {
         this.client.get('/Events/')
         .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + 'Z') > this.lastEventCheck))
         .then(events => events[0])
         .then(({EventTypeId}) => this.client.get('/EventTypes/' + EventTypeId)
             .then(({data}) => data.Description))
+        .then(e => {this.log('Setting status to', e); return e})
         .then(EventAction => this.currentStatusOfLock = lockStateEnum[EventAction])
         .catch(() => {})
     }
