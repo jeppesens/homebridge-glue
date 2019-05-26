@@ -1,5 +1,5 @@
-var request = require("request");
-var Service, Characteristic;
+const axios = require('axios');
+let Service, Characteristic;
 
 module.exports = function(homebridge) {
     Service = homebridge.hap.Service;
@@ -8,206 +8,178 @@ module.exports = function(homebridge) {
     homebridge.registerAccessory("homebridge-glue", "glue-lock", LockAccessory);
 }
 
-function LockAccessory(log, config) {
-    this.log = log;
-    this.name = config["name"] || "Glue Lock";
-    this.url = config["url"] || "https://api.gluehome.com/api";
-    this.username = config["username"];
-    this.password = config["password"];
-    this.hubID = config["hub-id"];
-    this.lockID = config["lock-id"];
-    this.lockState = 0;
-    this.currentStatusOfLock = 'UNSECURED'; //Will only work if the status if only changed by homebridge
-    this.lastEventCheck = new Date(0);
-    this.checkEventsIsEnabled = config["check-for-events"] || true;
-    this.checkEventsInterval = config["check-for-events-interval"] || 10;
+const delay = (milliseconds) => new Promise(r => setTimeout(r, milliseconds * 1000));
 
-    this.lockservice = new Service.LockMechanism(this.name);
+const lockStateEnum = {
+    'Locked': "1",
+    'Unlocked': "0",
+    'SECURED': "1",
+    'UNSECURED': "0",
+    '1': 'SECURED',
+    '0': 'UNSECURED',
+}
 
-    this.lockservice
-        .getCharacteristic(Characteristic.LockCurrentState)
-        .on('get', this.getState.bind(this));
+class LockAccessory {
+    constructor(log, config) {
+        this.log = log;
+        this.config = config;
+        this.hubID = config["hub-id"];
+        this.lockID = config["lock-id"];
+        this.currentStatusOfLockHolder = Characteristic.ChargingState.UNKNOWN;
+        this.lastEventCheck = new Date(0);
+        this.lockService = new Service.LockMechanism(this.name);
+        this.batteryService = new Service.BatteryService(this.name);
+        this.init()
+        this.listenToEvents();
+    }
 
-    this.lockservice
-        .getCharacteristic(Characteristic.LockTargetState)
-        .on('get', this.getState.bind(this))
-        .on('set', this.setState.bind(this));
+    get log() {
+        return (...toLog) => {
+            this.logHolder(...toLog)
+            return toLog;
+        }
+    }
 
-    this.battservice = new Service.BatteryService(this.name);
+    set log(data) {
+        this.logHolder = data;
+    }
 
-    this.battservice
-        .getCharacteristic(Characteristic.BatteryLevel)
-        .on('get', this.getBattery.bind(this));
+    listenToEvents() {
+        this.lockService
+            .getCharacteristic(Characteristic.LockCurrentState)
+            .on('get', this.getState.bind(this));
 
-    this.battservice
-        .getCharacteristic(Characteristic.StatusLowBattery)
-        .on('get', this.getLowBatt.bind(this));
+        this.lockService
+            .getCharacteristic(Characteristic.LockTargetState)
+            .on('get', this.getState.bind(this))
+            .on('set', this.setState.bind(this));
 
-    this.checkEvents = () => {
-        this.log("Checking for new events.");
-        new Promise((resolve, reject) => {
-            request.get({
-                url: this.url + "/Events/",
-                auth: { user: this.username, password: this.password }
-            }, function(err, response, body) {    
-                if (!err && response.statusCode == 200) {
-                    var Events = JSON.parse(body);
-                    this.log("Finding events newer than: ", this.lastEventCheck);
-                    var eventsToCheck = Events.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + "Z") > this.lastEventCheck);
-                    resolve(eventsToCheck[0])
-                } else {
-                    reject(err)
-                }
-            }.bind(this))
+        this.batteryService
+            .getCharacteristic(Characteristic.BatteryLevel)
+            .on('get', this.getBattery.bind(this));
+
+        this.batteryService
+            .getCharacteristic(Characteristic.StatusLowBattery)
+            .on('get', this.getLowBattery.bind(this));
+    }
+    
+    get name() {
+        return this.config["name"] || "Glue Lock";
+    }
+    get url() {
+        return this.config["url"] || "https://api.gluehome.com/api";
+    }
+
+    get checkEventsInterval() {
+        return this.config["check-for-events-interval"] || 10;
+    }
+    get checkEventsIsEnabled() {
+        return this.config["check-for-events"] || true
+    }
+
+    get client() {
+        return axios.create({
+            baseURL: this.url,
+            auth: { username: this.config.username, password: this.config.password },
         })
-        .catch(err => this.log(err))
-        .then(event => {
-            if (event) {
-                return event;
+    }
+
+    async init() {
+        this.log("Initalizing Glue Lock")
+        if (!this.hubID || !this.lockID) {
+            await this.client.get('/Hubs')
+                .then(({data}) => data)
+                .then(hubs => {
+                    this.log("Available hubs and locks: ");
+                    hubs.forEach(hub => this.log(`hubId: ${hub.Id}, available lockIds: ${hub.LockIds.toString()}`))
+                    this.log(`Will select the first hub and first lock, otherwise set it in config.json as: hub-id: "${hubs[0].Id}", lock-id: "${hubs[0].LockIds[0]}"`);
+                    this.hubID = hubs[0].Id;
+                    this.lockID = hubs[0].LockIds[0];
+                })
+                .catch(err => this.log(`Got error: ${err.message} from /Hubs`));
+        }
+        await this.checkEvents(); // get last known state from Glue.
+        if (this.checkEventsIsEnabled) {
+            setInterval(() => this.checkEvents(),
+                this.checkEventsInterval * 1000);
+        }
+    }
+
+    getState(callback) {
+        // Only works if the status was last set by Homebridge or the Glue app NOT if manually unlocked or locked.
+        callback(null, Characteristic.LockCurrentState[this.lockStatus]);
+    }
+
+    getCharging(callback) {
+        callback(null, Characteristic.ChargingState.NOT_CHARGING);
+    }
+
+    get lockStatus() {
+        return lockStateEnum[this.currentStatusOfLock];
+    }
+
+    get currentStatusOfLock() {
+        return this.currentStatusOfLockHolder;
+    }
+    set currentStatusOfLock(state) {
+        this.currentStatusOfLockHolder = state; // "1" or "0".
+        this.lastEventCheck = new Date();
+        this.lockService.setCharacteristic(Characteristic.LockCurrentState, state);
+    }
+
+    async getBatteryLevel() {
+        return this.client.get('/Locks/' + this.lockID)
+            .then(({data}) => data.BatteryStatusAfter)
+            .then(batteryStatus => batteryStatus / 255 * 100)
+            .then(batteryLevel => {this.log(`Battery level is ${batteryLevel}`); return batteryLevel})
+            .catch(err => this.log(`Error getting battery level (status code ${(err.response || {}).status}): "${err.message}".`));
+    }
+
+    async getBattery(callback) {
+        return this.getBatteryLevel()
+            .then(batteryLevel => callback(null, batteryLevel))
+            .catch(err => callback(err))
+    }
+
+    async getLowBattery(callback) {
+        return this.getBatteryLevel()
+            .then(batteryLevel =>  (batteryLevel >= 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW)
+            .then(batteryLevel => callback(null, batteryLevel))
+            .catch(err => callback(err));
+    }
+
+    async setState(HubCommand, callback) {
+        this.log("Set state to %s", lockStateEnum[HubCommand]);
+        return this.client.post('/Hubs/' + this.hubID + '/Commands', { 
+            LockId: this.lockID, 
+            HubCommand,
+        })
+        .then(({data}) => data)
+        .then(({Status}) => {
+            if (Status === 1) {
+                this.currentStatusOfLock = HubCommand; // 1 or 0.
+                callback(null);
+                return `State change completed and set to ${lockStateEnum[HubCommand]}.`;
             } else {
-                throw new Error("No new events.");
+                throw new Error("Error setting lock state.");
             }
         })
-        .then(({EventTypeId}) => new Promise((resolve, reject) => {
-            request.get({
-                url: this.url + "/EventTypes/" + EventTypeId,
-                auth: { user: this.username, password: this.password }
-            }, function(err, response, body) {    
-                if (!err && response.statusCode == 200) {
-                    var EventType = JSON.parse(body);
-                    var Description = EventType.Description;
-                    resolve(Description)
-                } else {
-                    this.log(err);
-                    reject(err)
-                }
-            }.bind(this))
-        }))
-        .then(EventAction => {
-            var state = EventAction === "Locked" ? "SECURED" : "UNSECURED";
-            this.currentStatusOfLock = state;
-            this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
-            this.lastEventCheck = new Date();
-        })
+        .catch(err => {callback(err); return err.message})
+        .then(m => this.log(m));
+    }
+
+    getServices() {
+        return [this.lockService, this.batteryService];
+    }
+
+    checkEvents() {
+        this.client.get('/Events/')
+        .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + 'Z') > this.lastEventCheck))
+        .then(events => events[0])
+        .then(({EventTypeId}) => this.client.get('/EventTypes/' + EventTypeId)
+            .then(({data}) => data.Description))
+        .then(e => {this.log('Setting status to', e); return e})
+        .then(EventAction => this.currentStatusOfLock = lockStateEnum[EventAction])
         .catch(() => {})
     }
-
-    this.log("Initalizing Glue Lock")
-    new Promise(resolve => {
-        if (!this.hubID || !this.lockID) {
-            request.get({
-                url: this.url + "/Hubs/",
-                auth: { user: this.username, password: this.password }
-            }, function(err, response, body) {
-                if (!err && response.statusCode == 200) {
-                    var json = JSON.parse(body);
-                    this.log("Available hubs and locks: ");
-                    for(const hub of json) {
-                        this.log("hubId: %s, available lockIds: %s", hub.Id, hub.LockIds.toString());
-                    }
-                    this.log("Will select the first hub and first lock, otherwise set it in config.json as: hub-id: '%s', lock-id: '%s' ", json[0].Id, json[0].LockIds[0]);
-                    this.hubID = json[0].Id;
-                    this.lockID = json[0].LockIds[0];
-                } else {
-                    this.log("Error with auth (status code %s): %s", response.statusCode, err);
-                }
-                resolve()
-            }.bind(this));
-        } else {
-            resolve();
-        }
-    }).then(() => this.checkEvents());
-
-    if (this.checkEventsIsEnabled) {
-        setInterval(() => {
-            this.checkEvents();
-        }, this.checkEventsInterval * 1000);
-    }
-}
-
-LockAccessory.prototype.getState = function(callback) {
-    // Only works if the status was last set by Homebridge and not e.g the Glue app
-    callback(null, Characteristic.LockCurrentState[this.currentStatusOfLock]);
-}
-
-LockAccessory.prototype.getCharging = function(callback) {
-    callback(null, Characteristic.ChargingState.NOT_CHARGING);
-}
-
-LockAccessory.prototype.getBattery = function(callback) {
-    this.log("Getting battery level");
-
-    request.get({
-        url: this.url + "/Locks/" + this.lockID,
-        auth: { user: this.username, password: this.password }
-    }, function(err, response, body) {
-
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            var batt = json.BatteryStatusAfter / 255 * 100;
-            this.log("Battery level is %s", batt);
-            callback(null, batt); // success
-        }
-        else {
-            this.log("Error getting battery level (status code %s): %s", response.statusCode, err);
-            callback(err);
-        }
-    }.bind(this));
-}
-
-LockAccessory.prototype.getLowBatt = function(callback) {
-    this.log("Getting current battery...");
-
-    request.get({
-        url: this.url + "/Locks/" + this.lockID,
-        auth: { user: this.username, password: this.password }
-    }, function(err, response, body) {
-
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            var batt = json.BatteryStatusAfter / 255 * 100;
-            this.log("Lock battery is %s", batt);
-            var low = (batt > 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW;
-            callback(null, low); // success
-        }
-        else {
-            this.log("Error getting battery (status code %s): %s", response.statusCode, err);
-            callback(err);
-        }
-    }.bind(this));
-}
-
-LockAccessory.prototype.setState = function(state, callback) {
-    this.log('state', state)
-    var lockState = (state == Characteristic.LockTargetState.SECURED) ? "1" : "0";
-    // setting status so we can remember if it was locked or not.
-    this.log("Set state to %s", lockState);
-
-    request.post({
-        url: this.url + "/Hubs/" + this.hubID + '/Commands',
-        auth: { user: this.username, password: this.password },
-        form: { LockId: this.lockID, HubCommand: lockState }
-    }, function(err, response, body) {
-
-        if (!err && response.statusCode == 200) {
-            var json = JSON.parse(body);
-            // TODO Check status...
-            this.log("State change complete.");
-
-            // we succeeded, so update the "current" state as well
-            this.lockservice.setCharacteristic(Characteristic.LockCurrentState, state);
-            // this.log('new state', Characteristic.LockCurrentState)
-
-            callback(null); // success
-            this.currentStatusOfLock = lockState === "1" ? 'SECURED' : 'UNSECURED';
-        }
-        else {
-            this.log("Error '%s' setting lock state. Response: %s", err, body);
-            callback(err || new Error("Error setting lock state."));
-        }
-    }.bind(this));
-}
-
-LockAccessory.prototype.getServices = function() {
-    return [this.lockservice, this.battservice];
 }
