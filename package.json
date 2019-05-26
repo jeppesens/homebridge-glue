@@ -22,6 +22,6 @@
         "homebridge": ">=0.2.0"
     },
     "dependencies": {
-        "request": "^2.88.0"
+        "axios": "^0.18.0"
     }
 }
