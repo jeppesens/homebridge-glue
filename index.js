@@ -29,13 +29,13 @@ class LockAccessory {
         this.lastEventCheck = new Date(0);
         this.lockService = new Service.LockMechanism(this.name);
         this.batteryService = new Service.BatteryService(this.name);
-        this.init()
+        this.init();
         this.listenToEvents();
     }
 
     get log() {
         return (...toLog) => {
-            this.logHolder(...toLog)
+            this.logHolder(...toLog);
             return toLog;
         }
     }
@@ -144,28 +144,27 @@ class LockAccessory {
     async getLowBattery(callback) {
         return this.getBatteryLevel()
             .then(batteryLevel =>  (batteryLevel >= 20) ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW)
-            .then(batteryLevel => callback(null, batteryLevel))
+            .then(lowBattery => callback(null, lowBattery))
             .catch(err => callback(err));
     }
 
     async setState(HubCommand, callback) {
         this.log("Set state to %s", lockStateEnum[HubCommand]);
-        return this.client.post('/Hubs/' + this.hubID + '/Commands', {
+        await this.client.post('/Hubs/' + this.hubID + '/Commands', {
             LockId: this.lockID,
             HubCommand,
-        })
-        .then(({data}) => data)
-        .then(({Status}) => {
-            if (Status === 1) {
-                this.currentStatusOfLock = HubCommand; // 1 or 0.
-                callback(null);
-                return `State change completed and set to ${lockStateEnum[HubCommand]}.`;
-            } else {
-                throw new Error("Error setting lock state.");
-            }
-        })
-        .catch(err => {callback(err); return err.message})
-        .then(m => this.log(m));
+        }).then(({data}) => data)
+            .then(({Status}) => {
+                if (Status === 1) {
+                    this.currentStatusOfLock = HubCommand; // 1 or 0.
+                    callback(null);
+                    return `State change completed and set to ${lockStateEnum[HubCommand]}.`;
+                } else {
+                    throw new Error("Error setting lock state.");
+                }
+            })
+            .catch(err => {callback(err); return err.message})
+            .then(m => this.log(m));
     }
 
     getServices() {
@@ -173,13 +172,13 @@ class LockAccessory {
     }
 
     async checkEvents() {
-        this.client.get('/Events/')
-        .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + 'Z') > this.lastEventCheck))
-        .then(events => events[0])
-        .then(({EventTypeId}) => this.client.get('/EventTypes/' + EventTypeId)
-            .then(({data}) => data.Description))
-        .then(e => {this.log('Setting status to', e); return e})
-        .then(EventAction => this.currentStatusOfLock = lockStateEnum[EventAction])
-        .catch(() => {})
+        await this.client.get('/Events/')
+            .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + 'Z') > this.lastEventCheck))
+            .then(events => events[0])
+            .then(({EventTypeId}) => this.client.get('/EventTypes/' + EventTypeId)
+                .then(({data}) => data.Description)) // Locked or Unlocked
+            .then(e => {this.log('Setting status to', e); return e})
+            .then(EventAction => this.currentStatusOfLock = lockStateEnum[EventAction])
+            .catch(() => {})
     }
 }
