@@ -1,0 +1,31 @@
+{
+    "extends": ["tslint:latest"],
+    "rules": {
+        "indent": [true, "spaces", 4],
+        "object-literal-sort-keys": [false],
+        "arrow-return-shorthand": true,
+        "no-bitwise": false,
+        "no-duplicate-imports": true,
+        "no-conditional-assignment": true,
+        "variable-name": [true, "allow-leading-underscore"],
+        "no-namespace": false,
+        "class-name": true,
+        "await-promise": true,
+        "curly": false,
+        "interface-over-type-literal": true,
+        "jsdoc-format": true,
+        "member-access": true,
+        "no-boolean-literal-compare": true,
+        "no-duplicate-super": true,
+        "no-floating-promises": true,
+        "no-implicit-dependencies": false,
+        "quotemark": [true, "single"],
+        "space-within-parens": [true, 1],
+        "arrow-parens": false,
+        "max-line-length": false,
+        "no-duplicate-variable": true,
+        "no-console": true,
+        "only-arrow-functions": false,
+        "array-type": false
+    }
+}

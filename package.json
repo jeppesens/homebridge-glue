@@ -2,6 +2,7 @@
     "name": "homebridge-glue",
     "version": "2.1.0",
     "description": "Glue Smart Lock integration for Homebridge",
+    "main": "dist/index.js",
     "author": {
         "name": "Tobias Jeppesen"
     },
@@ -22,6 +23,10 @@
         "homebridge": ">=0.2.0"
     },
     "dependencies": {
-        "axios": "^0.18.0"
+        "axios": "^0.18.1"
+    },
+    "devDependencies": {
+        "@types/node": "^12.12.21",
+        "typescript": "^3.7.4"
     }
 }

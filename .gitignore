@@ -58,3 +58,7 @@ typings/
 .env
 
 .vscode/*
+
+*.js
+**.js.map
+/dist

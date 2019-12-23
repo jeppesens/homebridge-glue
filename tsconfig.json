@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+      "target": "ES6",
+      "module": "commonjs",
+      "sourceMap": true,
+      "outDir": "dist",
+      "inlineSources": true,
+      "declaration": true,
+      "forceConsistentCasingInFileNames": true,
+      "pretty": true,
+      "noImplicitThis": true,
+      "experimentalDecorators": true,
+      "emitDecoratorMetadata": true,
+      "preserveConstEnums": true,
+      "noImplicitAny": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "*.js", "**.js.map"]
+}
