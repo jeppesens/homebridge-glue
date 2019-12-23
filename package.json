@@ -3,6 +3,9 @@
     "version": "2.1.0",
     "description": "Glue Smart Lock integration for Homebridge",
     "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc"
+    },
     "author": {
         "name": "Tobias Jeppesen"
     },
