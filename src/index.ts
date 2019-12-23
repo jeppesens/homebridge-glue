@@ -3,7 +3,7 @@ dns.setServers( [ '1.1.1.1', '1.0.0.1' ] );
 
 import axios, { AxiosInstance } from 'axios';
 import { lockStateEnum } from './enum';
-import { IGlueCommandResp, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp, IGlueEvent } from './interface';
+import { IGlueCommandResp, IGlueEvent, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp } from './interface';
 
 let service: any;
 let characteristic: any;
@@ -173,6 +173,10 @@ class LockAccessory {
                 } )
                 .catch( err => this.log( `Got error: ${err.message} from ${this.client.defaults.baseURL}/Hubs` ) );
         }
+        if ( !this.config.name ) {
+            const lock = await this.getLock();
+            this.config.name = lock.Description;
+        }
         await this.checkEvents(); // get last known state from Glue.
         if ( this.checkEventsIsEnabled ) {
             setInterval( () => this.checkEvents(),
@@ -180,9 +184,14 @@ class LockAccessory {
         }
     }
 
-    private async getBatteryLevel() {
+    private async getLock(): Promise<IGlueLockStatusResp> {
         return this.client.get<IGlueLockStatusResp>( `/Locks/${this.lockID}` )
-            .then( resp => resp.data.BatteryStatusAfter || resp.data.BatteryStatusBefore )
+            .then( resp => resp.data );
+    }
+
+    private async getBatteryLevel() {
+        return this.getLock()
+            .then( resp => resp.BatteryStatusAfter || resp.BatteryStatusBefore )
             .then( batteryStatus => batteryStatus / 255 * 100 )
             .then( batteryLevel => { this.log( `Battery level is ${batteryLevel}` ); return batteryLevel; } )
             .catch( err => this.log( `Error getting battery level (status code ${( err.response || {} ).status}): '${err.message}'.` ) );
