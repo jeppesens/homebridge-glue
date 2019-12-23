@@ -3,7 +3,7 @@ dns.setServers( [ '1.1.1.1', '1.0.0.1' ] );
 
 import axios, { AxiosInstance } from 'axios';
 import { lockStateEnum } from './enum';
-import { IGlueCommandResp, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp } from './interface';
+import { IGlueCommandResp, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp, IGlueEvent } from './interface';
 
 let service: any;
 let characteristic: any;
@@ -189,13 +189,24 @@ class LockAccessory {
     }
 
     private async checkEvents() {
-        await this.client.get<IGlueEventResponse>( '/Events/' )
-            .then( ( resp ) => resp.data.LockEvent.filter( ( { LockId, Created } ) => LockId === this.lockID && new Date( Created + 'Z' ) > this.lastEventCheck ) )
-            .then( events => events[0] )
-            .then( ( { EventTypeId } ) => this.eventTypes.then( types => { this.log( types ); return types[EventTypeId]} ) )
-                .then( type => type.Description ) // Locked or Unlocked
-            .then( event => { this.log( `Setting status to ${event}` ); return event; } )
-            .then( eventAction => this.currentStatusOfLock = lockStateEnum[eventAction] )
-            .catch( _e => undefined );
+        const [ events, types ] = await Promise.all( [
+            this.client.get<IGlueEventResponse>( '/Events/' )
+                .then( resp => resp.data.LockEvent )
+                .catch( _e => [] ),
+            this.eventTypes,
+        ] );
+
+        const lastEvent: IGlueEvent = events
+            .filter( ( { LockId, Created, EventTypeId } ) =>
+                LockId === this.lockID &&
+                new Date( Created + 'Z' ) > this.lastEventCheck &&
+                types[EventTypeId] && [ 'Locked', 'Unlocked' ].includes( types[EventTypeId].Description ) )
+            .sort( ( a, b ) => new Date( a.Created ) > new Date( b.Created ) ? 1 : -1 )
+            [ 0 ];
+
+        if ( !lastEvent ) return;
+        this.log( lastEvent );
+        const lastEventType = types[lastEvent.EventTypeId];
+        if ( lastEventType ) this.currentStatusOfLock = lockStateEnum[lastEventType.Description];
     }
 }
