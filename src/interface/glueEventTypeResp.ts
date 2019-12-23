@@ -1,6 +1,6 @@
 export interface IGlueEventType {
     Id: string;
-    Description: string;
+    Description: 'Locked' | 'Unlocked' | string;
     SystemStringId: string;
     EventCategoryId: string;
     IconId: string;

@@ -90,7 +90,7 @@ class LockAccessory {
     }
 
     public getState( callback: ( err: Error, resp?: any ) => void ) {
-        // Only works if the status was last set by Homebridge or the Glue app NOT if manually unlocked or locked.
+        /* Only works if the status was last set by Homebridge or the Glue app NOT if manually unlocked or locked. */
         callback( null, characteristic.LockCurrentState[this.lockStatus] );
     }
 
@@ -114,8 +114,8 @@ class LockAccessory {
             HubCommand: hubCommand,
         } ).then( resp => resp.data )
             .then( ( { Status } ) => {
-                if ( Status === 1 ) {
-                    this.currentStatusOfLock = hubCommand; // 1 or 0.
+                if ( Status === 1 ) { // Success
+                    this.currentStatusOfLock = hubCommand;
                     callback( null );
                     return `State change completed and set to ${lockStateEnum[hubCommand]}.`;
                 } else {
@@ -150,10 +150,12 @@ class LockAccessory {
             .then( resp => resp.data )
             .then( events => events.reduce( ( acc, curr ) => ( { ...acc, [curr.Id]: curr } ), {} ) );
         await this.eventTypes;
+        /* check for new types once an hour. */
         setTimeout( () => {
             /* tslint:disable-next-line: no-floating-promises */
             this.getEventTypes();
-        }, 1 * 60 * 60 * 1000 ); // check for new types once an hour.
+        }, 1 * 60 * 60 * 1000 );
+        return this.eventTypes;
     }
 
     private async init() {
@@ -190,7 +192,7 @@ class LockAccessory {
         await this.client.get<IGlueEventResponse>( '/Events/' )
             .then( ( resp ) => resp.data.LockEvent.filter( ( { LockId, Created } ) => LockId === this.lockID && new Date( Created + 'Z' ) > this.lastEventCheck ) )
             .then( events => events[0] )
-            .then( ( { EventTypeId } ) => this.eventTypes.then( types => types[EventTypeId] ) )
+            .then( ( { EventTypeId } ) => this.eventTypes.then( types => { this.log( types ); return types[EventTypeId]} ) )
                 .then( type => type.Description ) // Locked or Unlocked
             .then( event => { this.log( `Setting status to ${event}` ); return event; } )
             .then( eventAction => this.currentStatusOfLock = lockStateEnum[eventAction] )
