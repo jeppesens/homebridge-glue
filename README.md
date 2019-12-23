@@ -2,10 +2,10 @@
 ### Homebridge integration for Glue smart locks
 
 # Installation
-install npm i -g homebridge-glue
+install `npm i -g homebridge-glue`
 
 # Configuration
-config.json example
+`config.json` example
 ```
 {
   ...
@@ -27,7 +27,7 @@ config.json example
 ```
 
 ## Selecting Hub and Lock
-If hubId or lockId is unknown it will select the first available lock of the first hub. If you only have one. It will work without configuration.
+If hubId or lockId is undefined it will select the first available lock of the first hub. If you only have one lock. It will work without configuration.
 
 
 ## Events
@@ -42,12 +42,3 @@ https://github.com/nfarina/homebridge
 
 ## Glue Smart Lock
 https://www.gluehome.com
-
-
-
-
-
-
-
-
-**Based on work from [siavashg](https://github.com/siavashg/homebridge-glue)**

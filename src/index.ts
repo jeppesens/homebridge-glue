@@ -108,7 +108,7 @@ class LockAccessory {
     }
 
     public async setState( hubCommand: '1' | '0', callback: ( err: Error, resp?: any ) => void ) {
-        this.log( 'Set state to %s', hubCommand === '1' ? 'locked' : 'unlocked' );
+        this.log( 'Set state to %s', hubCommand === '1' ? 'unlocked' : 'locked' );
         await this.client.post<IGlueCommandResp>( `/Hubs/${this.hubID}/Commands`, {
             LockId: this.lockID,
             HubCommand: hubCommand,
@@ -210,7 +210,7 @@ class LockAccessory {
                 LockId === this.lockID &&
                 new Date( Created + 'Z' ) > this.lastEventCheck &&
                 types[EventTypeId] && [ 'Locked', 'Unlocked' ].includes( types[EventTypeId].Description ) )
-            .sort( ( a, b ) => new Date( a.Created ) > new Date( b.Created ) ? 1 : -1 )
+            .sort( ( a, b ) => new Date( a.Created ) > new Date( b.Created ) ? -1 : 1 )
             [ 0 ];
 
         if ( !lastEvent ) return;
