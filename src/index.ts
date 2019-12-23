@@ -53,7 +53,7 @@ class LockAccessory {
         return lockStateEnum[this.currentStatusOfLock];
     }
 
-    get currentStatusOfLock() {
+    get currentStatusOfLock(): '1' | '0' {
         return this.currentStatusOfLockHolder;
     }
     set currentStatusOfLock( state ) {
@@ -63,7 +63,7 @@ class LockAccessory {
     }
     private hubID: string;
     private lockID: string;
-    private currentStatusOfLockHolder: string = characteristic.ChargingState.UNKNOWN;
+    private currentStatusOfLockHolder: '0' | '1' = characteristic.ChargingState.UNKNOWN; // starts with unknown '3';
     private lastEventCheck: Date = new Date( 0 );
     private lockService: any = new service.LockMechanism( this.name );
     private batteryService: any = new service.BatteryService( this.name );
@@ -108,7 +108,7 @@ class LockAccessory {
     }
 
     public async setState( hubCommand: '1' | '0', callback: ( err: Error, resp?: any ) => void ) {
-        this.log( 'Set state to %s', lockStateEnum[hubCommand] );
+        this.log( 'Set state to %s', hubCommand === '1' ? 'locked' : 'unlocked' );
         await this.client.post<IGlueCommandResp>( `/Hubs/${this.hubID}/Commands`, {
             LockId: this.lockID,
             HubCommand: hubCommand,
