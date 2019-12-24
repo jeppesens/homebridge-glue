@@ -1,23 +1,9 @@
-import * as dns from 'dns';
-dns.setServers( [ '1.1.1.1', '1.0.0.1' ] );
-
-import axios, { AxiosInstance } from 'axios';
 import { lockStateEnum } from './enum';
-import { IGlueCommandResp, IGlueEvent, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp } from './interface';
+import { HttpClient } from './httpClient';
+import { IConfig, IGlueCommandResp, IGlueEvent, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp } from './interface';
 
 let service: any;
 let characteristic: any;
-
-interface IConfig {
-    username: string;
-    password: string;
-    'hub-id'?: string;
-    'lock-id'?: string;
-    url?: string;
-    name?: string;
-    'check-for-events'?: boolean;
-    'check-for-events-interval'?: number;
-}
 
 export default function( homebridge: any ) {
     service = homebridge.hap.Service;
@@ -28,35 +14,34 @@ export default function( homebridge: any ) {
 
 class LockAccessory {
 
-    get name() {
+    private get name() {
         return this.config.name || 'Glue Lock';
     }
-    get url() {
+    private get url() {
         return this.config.url || 'https://api.gluehome.com/api';
     }
 
-    get checkEventsInterval() {
+    private get checkEventsInterval() {
         return this.config['check-for-events-interval'] || 10;
     }
-    get checkEventsIsEnabled() {
+    private get checkEventsIsEnabled() {
         return this.config['check-for-events'] || true;
     }
+    // private get client(): AxiosInstance {
+    //     return axios.create( {
+    //         baseURL: this.url,
+    //         auth: { username: this.config.username, password: this.config.password },
+    //     } );
+    // }
 
-    get client(): AxiosInstance {
-        return axios.create( {
-            baseURL: this.url,
-            auth: { username: this.config.username, password: this.config.password },
-        } );
-    }
-
-    get lockStatus() {
+    private get lockStatus() {
         return lockStateEnum[this.currentStatusOfLock];
     }
 
-    get currentStatusOfLock(): '1' | '0' {
+    private get currentStatusOfLock(): '1' | '0' {
         return this.currentStatusOfLockHolder;
     }
-    set currentStatusOfLock( state ) {
+    private set currentStatusOfLock( state ) {
         this.currentStatusOfLockHolder = state; // '1' or '0'.
         this.lastEventCheck = new Date();
         this.lockService.setCharacteristic( characteristic.LockCurrentState, state );
@@ -68,6 +53,10 @@ class LockAccessory {
     private lockService: any = new service.LockMechanism( this.name );
     private batteryService: any = new service.BatteryService( this.name );
     private eventTypes: Promise<{ [eventTypeId: string]: IGlueEventType }>;
+    private readonly client = new HttpClient( {
+        baseURL: this.url,
+        auth: { username: this.config.username, password: this.config.password },
+    } );
 
     constructor( private log: any, private readonly config: IConfig ) {
         if ( !this.config.username && !this.config.password ) throw new Error( `Config requires a username and password` );
@@ -171,7 +160,7 @@ class LockAccessory {
                     this.hubID = hubs[0].Id;
                     this.lockID = hubs[0].LockIds[0];
                 } )
-                .catch( err => this.log( `Got error: ${err.message} from ${this.client.defaults.baseURL}/Hubs` ) );
+                .catch( err => this.log( `Got error: ${err.message} from ${this.client.baseURL}/Hubs` ) );
         }
         if ( !this.config.name ) {
             const lock = await this.getLock();
