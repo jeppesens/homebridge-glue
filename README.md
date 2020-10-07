@@ -31,7 +31,9 @@ If hubId or lockId is unknown it will select the first available lock of the fir
 
 
 ## Events
-Glue have events that they list in the app. This plugin checks those events every 10 seconds and updates the status accordingly. Keep in mind that manually locking or unlocking the door doesn't trigger an event.
+Glue have events that they list in the app. This plugin checks those events every 10 seconds and updates the status accordingly.
+- __For the "normal" Glue Lock:__
+  - Keep in mind that manually locking or unlocking the door doesn't trigger an event unless you have the Pro version.
 
 
 ## Homebridge
