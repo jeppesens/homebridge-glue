@@ -19,7 +19,8 @@ install `npm i -g homebridge-glue`
       "username": "myname@example.com",
       "password": "EB1K^M0zBN2vRFK6",
       "check-for-events": true, // default true
-      "check-for-events-interval": 10 // default 10 seconds
+      "check-for-events-interval": 10, // default 10 seconds
+      "custom-dns": false // default false
     }
   ]
 }

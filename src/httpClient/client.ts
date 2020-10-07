@@ -14,7 +14,7 @@ export interface IHttpClientConfig {
 export class HttpClient {
     public readonly baseURL: string;
     private readonly auth: string;
-    constructor( config: IHttpClientConfig ) {
+    constructor( config: IHttpClientConfig, private readonly customDNS = false ) {
         if ( config.baseURL ) this.baseURL = config.baseURL;
         else throw new Error( 'Missing baseURL' );
         if ( config.auth && config.auth.username && config.auth.password )
@@ -37,7 +37,7 @@ export class HttpClient {
             body: type === 'POST' ? body : undefined,
             path: Path.join( this.basePath, path ),
             host: this.host,
-            lookup: process.env.CUSTOM_DNS ? lookup : undefined,
+            lookup: this.customDNS ? lookup : undefined,
             headers: {
                 'Content-Type': 'application/json',
                 'Host': this.host,

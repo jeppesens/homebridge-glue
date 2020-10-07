@@ -56,7 +56,7 @@ class LockAccessory {
     private readonly client = new HttpClient( {
         baseURL: this.url,
         auth: { username: this.config.username, password: this.config.password },
-    } );
+    }, this.config['custom-dns'] );
 
     constructor( private log: any, private readonly config: IConfig ) {
         if ( !this.config.username && !this.config.password ) throw new Error( `Config requires a username and password` );
