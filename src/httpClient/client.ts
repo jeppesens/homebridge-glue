@@ -37,7 +37,7 @@ export class HttpClient {
             body: type === 'POST' ? body : undefined,
             path: Path.join( this.basePath, path ),
             host: this.host,
-            lookup,
+            lookup: process.env.CUSTOM_DNS ? lookup : undefined,
             headers: {
                 'Content-Type': 'application/json',
                 'Host': this.host,
