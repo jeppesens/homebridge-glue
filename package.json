@@ -1,9 +1,9 @@
 {
     "name": "homebridge-glue",
-    "version": "1.2.0",
+    "version": "2.0.0",
     "description": "Glue Smart Lock integration for Homebridge",
     "author": {
-        "name": "Tobias Nilsson"
+        "name": "Tobias Jeppesen"
     },
     "keywords": [
         "homebridge-plugin",
@@ -15,7 +15,7 @@
     ],
     "repository": {
         "type": "git",
-        "url": "https://github.com/nilssontobias/homebridge-glue"
+        "url": "https://github.com/jeppesens/homebridge-glue"
     },
     "engines": {
         "node": ">=0.12.0",

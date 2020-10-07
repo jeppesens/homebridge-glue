@@ -8,11 +8,11 @@ module.exports = function(homebridge) {
     homebridge.registerAccessory("homebridge-glue", "glue-lock", LockAccessory);
 }
 
-const delay = (milliseconds) => new Promise(r => setTimeout(r, milliseconds * 1000));
-
 const lockStateEnum = {
     'Locked': "1",
     'Unlocked': "0",
+    'Manual Lock': "1",
+    'Manual Unlock': "0",
     'SECURED': "1",
     'UNSECURED': "0",
     '1': 'SECURED',
@@ -62,7 +62,7 @@ class LockAccessory {
             .getCharacteristic(Characteristic.StatusLowBattery)
             .on('get', this.getLowBattery.bind(this));
     }
-    
+
     get name() {
         return this.config["name"] || "Glue Lock";
     }
@@ -150,8 +150,8 @@ class LockAccessory {
 
     async setState(HubCommand, callback) {
         this.log("Set state to %s", lockStateEnum[HubCommand]);
-        return this.client.post('/Hubs/' + this.hubID + '/Commands', { 
-            LockId: this.lockID, 
+        return this.client.post('/Hubs/' + this.hubID + '/Commands', {
+            LockId: this.lockID,
             HubCommand,
         })
         .then(({data}) => data)
@@ -172,7 +172,7 @@ class LockAccessory {
         return [this.lockService, this.batteryService];
     }
 
-    checkEvents() {
+    async checkEvents() {
         this.client.get('/Events/')
         .then(({data}) => data.LockEvent.filter(({LockId, Created}) => LockId === this.lockID && new Date(Created + 'Z') > this.lastEventCheck))
         .then(events => events[0])
