@@ -1,0 +1,1 @@
+{"version":3,"file":"glueConfig.js","sourceRoot":"","sources":["../../src/interface/glueConfig.ts"],"names":[],"mappings":"","sourcesContent":["import { AccessoryConfig } from 'homebridge';\n\nexport interface IConfig extends AccessoryConfig {\n    username?: string;\n    password?: string;\n    'api-key'?: string;\n    'lock-id'?: string;\n}\n"]}

@@ -1,0 +1,1 @@
+{"version":3,"file":"glueApiKeyResp.js","sourceRoot":"","sources":["../../src/interface/glueApiKeyResp.ts"],"names":[],"mappings":"","sourcesContent":["export interface IGlueApiKeysResp {\n    id: string;\n    name: string;\n}\n\nexport interface IGlueApiKeyResp {\n    id: string;\n    name: string;\n    apiKey: string;\n}\n"]}
