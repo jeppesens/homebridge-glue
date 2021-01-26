@@ -12,8 +12,10 @@
       "experimentalDecorators": true,
       "emitDecoratorMetadata": true,
       "preserveConstEnums": true,
-      "noImplicitAny": false
+      "noImplicitAny": false,
+      "skipLibCheck": true
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "*.js", "**.js.map"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "homebridge", "**/*.d.ts"]
+
 }

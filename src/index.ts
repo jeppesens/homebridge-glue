@@ -1,210 +1,292 @@
-import { lockStateEnum } from './enum';
-import { HttpClient } from './httpClient';
-import { IConfig, IGlueCommandResp, IGlueEvent, IGlueEventResponse, IGlueEventType, IGlueEventTypeResponse, IGlueHubsResponse, IGlueLockStatusResp } from './interface';
+import { AccessoryPlugin, API, HAP, Logging, Service } from 'homebridge';
 
-let service: any;
-let characteristic: any;
+import { HomebridgeLockStatus, LockEventsEnum } from './enum';
+import axios, { AxiosInstance } from 'axios';
+import { IGlueApiKeyResp, IGlueApiKeysResp, IConfig, IGlueCommandResp, IGlueLockStatusResp, LockOperationType, LockOperationStatus, GlueEventType } from './interface';
+import { initiated } from './helpers';
 
-export default function( homebridge: any ) {
-    service = homebridge.hap.Service;
-    characteristic = homebridge.hap.Characteristic;
+let hap: HAP;
 
+
+export default function( homebridge: API ) {
+    hap = homebridge.hap;
     homebridge.registerAccessory( 'homebridge-glue', 'glue-lock', LockAccessory );
 }
 
-class LockAccessory {
 
-    private get name() {
+class LockAccessory implements AccessoryPlugin {
+
+    private get name(): string {
         return this.config.name || 'Glue Lock';
     }
-    private get url() {
-        return this.config.url || 'https://api.gluehome.com/api';
-    }
 
-    private get checkEventsInterval() {
-        return this.config['check-for-events-interval'] || 10;
-    }
-    private get checkEventsIsEnabled() {
-        return this.config['check-for-events'] || true;
-    }
-    // private get client(): AxiosInstance {
-    //     return axios.create( {
-    //         baseURL: this.url,
-    //         auth: { username: this.config.username, password: this.config.password },
-    //     } );
-    // }
+    private _apiKey?: string;
+    private _client?: AxiosInstance;
 
-    private get lockStatus() {
-        return lockStateEnum[this.currentStatusOfLock];
-    }
+    private get client(): AxiosInstance {
+        if ( !this._client ) {
+            const client = axios.create( {
+                baseURL: 'https://user-api.gluehome.com',
+                timeout: 60000,
+            } );
 
-    private get currentStatusOfLock(): '1' | '0' {
-        return this.currentStatusOfLockHolder;
+            client.interceptors.request.use( config => {
+                this.log.debug( `making ${config.method} to ${config.url} with request body ${config.data ? JSON.stringify( config.data, null, 2 ) : null}` );
+                if ( !this._apiKey || config.url.match( '/v1/api-keys' ) )
+                    config.auth = { username: this.config.username, password: this.config.password }
+                else
+                    config.headers.authorization = `Api-Key ${this._apiKey}`;
+                return config;
+            }, error => {
+                this.log.debug( error );
+                return Promise.reject( error );
+            } );
+
+            client.interceptors.response.use( resp => {
+                this.log.debug( `Resp ${JSON.stringify( resp.data, null, 2 )}` );
+                return resp;
+            }, error => {
+                this.log.debug( error.response );
+                if ( error.response?.status === 401 )
+                    process.kill( 1 );
+                return Promise.reject( error );
+            } )
+
+            this._client = client;
+        }
+        return this._client
     }
-    private set currentStatusOfLock( state ) {
-        this.currentStatusOfLockHolder = state; // '1' or '0'.
-        this.lastEventCheck = new Date();
-        this.lockService.setCharacteristic( characteristic.LockCurrentState, state );
+    private get lastEvent() {
+        return this.lock?.lastLockEvent?.eventTime ? new Date( this.lock.lastLockEvent.eventTime ) : new Date( 0 );
     }
-    private hubID: string;
+    private _lock: IGlueLockStatusResp;
+    private set lock( lock: IGlueLockStatusResp ) {
+        this.log.debug( `Setting lock to ${JSON.stringify( lock, null, 2 )}` );
+        if ( lock.lastLockEvent && new Date( lock.lastLockEvent.eventTime ) > this.lastEvent ) {
+            this._lock = lock;
+            this.targetState = undefined;
+            this.lockService.setCharacteristic( hap.Characteristic.LockCurrentState, this.currentState );
+            if ( this.lock.batteryStatus )
+                this.batteryService.setCharacteristic( hap.Characteristic.BatteryLevel, this.lock.batteryStatus );
+            this.log.debug( `Set the lock to ${JSON.stringify( lock, null, 2 )}` );
+        }
+    }
+    private get lock(): IGlueLockStatusResp {
+        return this._lock;
+    }
     private lockID: string;
-    private currentStatusOfLockHolder: '0' | '1' = characteristic.ChargingState.UNKNOWN; // starts with unknown '3';
-    private lastEventCheck: Date = new Date( 0 );
-    private lockService: any = new service.LockMechanism( this.name );
-    private batteryService: any = new service.BatteryService( this.name );
-    private eventTypes: Promise<{ [eventTypeId: string]: IGlueEventType }>;
-    private readonly client = new HttpClient( {
-        baseURL: this.url,
-        auth: { username: this.config.username, password: this.config.password },
-    }, this.config['custom-dns'] );
+    private targetState: HomebridgeLockStatus;
+    private getTargetState() {
+        return this.targetState;
+    }
+    private lockService: Service = new hap.Service.LockMechanism( this.name );
+    private batteryService: Service = new hap.Service.BatteryService( this.name );
 
-    constructor( private log: any, private readonly config: IConfig ) {
-        if ( !this.config.username && !this.config.password ) throw new Error( `Config requires a username and password` );
-        if ( !this.config.username ) throw new Error( `Config requires a username` );
-        if ( !this.config.password ) throw new Error( `Config requires a password` );
-
-        this.hubID = config['hub-id'];
+    constructor( private log: Logging, private readonly config: IConfig ) {
+        if ( this.config['api-key'] )
+            this._apiKey = this.config['api-key'];
+        else if ( !this.config.username || !this.config.password )
+            throw new Error( 'Config requires api-key or a username and password' );
         this.lockID = config['lock-id'];
-        /* tslint:disable-next-line: no-floating-promises */
+        /* eslint-disable-next-line @typescript-eslint/no-floating-promises */
         this.init();
-        this.listenToEvents();
     }
 
     public getServices() {
         return [this.lockService, this.batteryService];
     }
 
-    public getCharging( callback: ( err: Error, resp?: any ) => void ) {
-        callback( null, characteristic.ChargingState.NOT_CHARGING );
+    public getCharging( callback: ( err: Error, resp?: 0 ) => void ) {
+        callback( null, hap.Characteristic.ChargingState.NOT_CHARGING );
     }
 
-    public getState( callback: ( err: Error, resp?: any ) => void ) {
-        /* Only works if the status was last set by Homebridge or the Glue app NOT if manually unlocked or locked. */
-        callback( null, characteristic.LockCurrentState[this.lockStatus] );
+
+    public getState( callback: ( err: Error, resp?: HomebridgeLockStatus ) => void ) {
+        let state: HomebridgeLockStatus;
+        switch ( this.lock?.lastLockEvent?.eventType ) {
+        case 'pressAndGo':
+        case 'localLock':
+        case 'manualLock':
+        case 'remoteLock':
+            state = hap.Characteristic.LockCurrentState.SECURED;
+            break;
+        case 'localUnlock':
+        case 'manualUnlock':
+        case 'remoteUnlock':
+            state = hap.Characteristic.LockCurrentState.UNSECURED;
+            break;
+        case 'unknown':
+        default:
+            state = hap.Characteristic.LockCurrentState.UNKNOWN;
+        }
+        callback( null, state );
     }
 
+    private get currentState(): HomebridgeLockStatus {
+        let val: HomebridgeLockStatus;
+        this.getState( ( err, vals ) => {
+            val = vals
+        } );
+        return val
+    }
+
+    @initiated
     public async getBattery( callback: ( err: Error, resp?: number ) => void ) {
         return this.getBatteryLevel()
             .then( batteryLevel => callback( null, batteryLevel ) )
             .catch( err => callback( err ) );
     }
 
+    @initiated
     public async getLowBattery( callback ) {
         return this.getBatteryLevel()
-            .then( batteryLevel => ( batteryLevel >= 20 ) ? characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : characteristic.StatusLowBattery.BATTERY_LEVEL_LOW )
+            .then( batteryLevel => ( batteryLevel >= 20 ) ? hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW )
             .then( lowBattery => callback( null, lowBattery ) )
             .catch( err => callback( err ) );
     }
 
-    public async setState( hubCommand: '1' | '0', callback: ( err: Error, resp?: any ) => void ) {
-        this.log( 'Set state to %s', hubCommand === '1' ? 'unlocked' : 'locked' );
-        await this.client.post<IGlueCommandResp>( `/Hubs/${this.hubID}/Commands`, {
-            LockId: this.lockID,
-            HubCommand: hubCommand,
-        } ).then( resp => resp.data )
-            .then( ( { Status } ) => {
-                if ( Status === 1 ) { // Success
-                    this.currentStatusOfLock = hubCommand;
-                    callback( null );
-                    return `State change completed and set to ${lockStateEnum[hubCommand]}.`;
+    public async setState( command: HomebridgeLockStatus, callback: ( err: Error, resp?: undefined ) => void ) {
+        this.targetState = command;
+        this.log.debug( `Set state to ${command === HomebridgeLockStatus.UNSECURED ? 'unlocked' : 'locked'}` );
+        let callbackCalled = false;
+        const onSuccessfulChange = () => {
+            if ( callbackCalled ) return;
+            this.lock = ( {
+                lastLockEvent: {
+                    eventTime: new Date().toISOString(),
+                    eventType: command ? 'remoteLock' : 'remoteUnlock',
+                }
+            } as any as IGlueLockStatusResp );
+            callback( null );
+            callbackCalled = true;
+        }
+        await this.client.post<IGlueCommandResp>( `/v1/locks/${this.lockID}/operations`, {
+            type: command === HomebridgeLockStatus.UNSECURED ? LockOperationType.Unlock : LockOperationType.Lock,
+        } )
+            .then( resp => resp.data )
+            .then( async ( { status, id } ) => {
+                if ( status === LockOperationStatus.Completed ) { // Success
+                    onSuccessfulChange()
                 } else {
-                    throw new Error( 'Error setting lock state.' );
+                    for ( let start = new Date(); new Date( start.getTime() + 2 * 60 * 1000 ) > new Date(); ) {  // 2 min
+                        await this.client
+                            .get<IGlueCommandResp>( `/v1/locks/${this.lockID}/operations/${id}` )
+                            .then( r => r.data )
+                            .then( r => {
+                                switch ( r.status ) {
+                                case LockOperationStatus.Completed:
+                                    start = new Date( 0 );
+                                    return onSuccessfulChange();
+                                case LockOperationStatus.Timeout:
+                                case LockOperationStatus.Failed:
+                                    throw Error( r.reason );
+                                case LockOperationStatus.Pending:
+                                default:
+                                    return;
+                                }
+                            } )
+                    }
                 }
             } )
-            .catch( err => { callback( err ); return err.message; } )
-            .then( m => this.log( m ) );
+            .catch( err => {
+                this.log.debug( err );
+                callback( err );
+                return err.message;
+            } );
     }
 
     private listenToEvents() {
         this.lockService
-            .getCharacteristic( characteristic.LockCurrentState )
+            .getCharacteristic( hap.Characteristic.LockCurrentState )
             .on( 'get', this.getState.bind( this ) );
 
         this.lockService
-            .getCharacteristic( characteristic.LockTargetState )
-            .on( 'get', this.getState.bind( this ) )
+            .getCharacteristic( hap.Characteristic.LockTargetState )
+            .on( 'get', this.getTargetState.bind( this ) )
             .on( 'set', this.setState.bind( this ) );
 
         this.batteryService
-            .getCharacteristic( characteristic.BatteryLevel )
+            .getCharacteristic( hap.Characteristic.BatteryLevel )
             .on( 'get', this.getBattery.bind( this ) );
 
         this.batteryService
-            .getCharacteristic( characteristic.StatusLowBattery )
+            .getCharacteristic( hap.Characteristic.StatusLowBattery )
             .on( 'get', this.getLowBattery.bind( this ) );
     }
 
-    private async getEventTypes() {
-        this.eventTypes = this.client.get<IGlueEventTypeResponse>( `/EventTypes` )
+    private async getApiKey() {
+        const name = 'homebridge-glue key';
+        this.log( 'Did not find an API key in config, going to create one instead' );
+        const url = '/v1/api-keys';
+        const scopes = ['events.read', 'locks.read', 'locks.write'];
+        await this.client.get<IGlueApiKeysResp[]>( url )
+            .then( resp => resp.data.filter( key => key.name === name ) )
+            .then( generatedKeys => Promise
+                .all( generatedKeys.map( key => {
+                    this.log( `Deleting old api key with id ${key.id}` );
+                    return this.client.delete( `${url}/${key.id}` );
+                } ) )
+            );
+
+        this._apiKey = await this.client.post<IGlueApiKeyResp>( '/v1/api-keys', {
+            name,
+            scopes,
+        } )
             .then( resp => resp.data )
-            .then( events => events.reduce( ( acc, curr ) => ( { ...acc, [curr.Id]: curr } ), {} ) );
-        await this.eventTypes;
-        /* check for new types once an hour. */
-        setTimeout( () => {
-            /* tslint:disable-next-line: no-floating-promises */
-            this.getEventTypes();
-        }, 1 * 60 * 60 * 1000 );
-        return this.eventTypes;
+            .then( data => {
+                this.log( `Created api key for Glue with name ${data.name} and id ${data.id} with scopes ${scopes.join( ', ' )}` );
+                return data.apiKey;
+            } )
+            .catch( err => {
+                this.log( err );
+                this.log( 'Killing the process!' );
+                process.exit( 1 );
+            } )
     }
 
     private async init() {
-        this.log( 'Initalizing Glue Lock' );
-        await this.getEventTypes();
-        if ( !this.hubID || !this.lockID ) {
-            await this.client.get<IGlueHubsResponse>( '/Hubs' )
+        this.log.debug( 'Initalizing Glue Lock' );
+        if ( !this._apiKey )
+            await this.getApiKey();
+        if ( !this.lockID )
+            await this.client.get<IGlueLockStatusResp[]>( '/v1/locks' )
                 .then( resp => resp.data )
-                .then( hubs => {
-                    this.log( 'Available hubs and locks: ' );
-                    hubs.forEach( hub => this.log( `hubId: ${hub.Id}, available lockIds: ${hub.LockIds}` ) );
-                    this.log( `Will select the first hub and first lock, otherwise set it in config.json as: hub-id: '${hubs[0].Id}', lock-id: '${hubs[0].LockIds[0]}'` );
-                    this.hubID = hubs[0].Id;
-                    this.lockID = hubs[0].LockIds[0];
-                } )
-                .catch( err => this.log( `Got error: ${err.message} from ${this.client.baseURL}/Hubs` ) );
-        }
-        if ( !this.config.name ) {
-            const lock = await this.getLock();
-            this.config.name = lock.Description;
-        }
-        await this.checkEvents(); // get last known state from Glue.
-        if ( this.checkEventsIsEnabled ) {
-            setInterval( () => this.checkEvents(),
-                this.checkEventsInterval * 1000 );
-        }
+                .then( locks => {
+                    this.log( `There is ${locks.length} lock(s) available:` );
+                    locks.forEach( ( l, i ) => this.log( `Lock ${i + 1} with description ${l.description} and id ${l.id}` ) );
+                    this.log( `Will select the first lock, otherwise set it in config.json as: lock-id: '${locks[0].id}'` );
+                    const lock = locks[0];
+                    this.lockID = lock.id;
+                } );
+        await this.getLock();
+
+        this.lockService
+            .setCharacteristic( hap.Characteristic.Manufacturer, 'Jeppesen x Glue' )
+            .setCharacteristic( hap.Characteristic.SerialNumber, this.lock.serialNumber )
+            .setCharacteristic( hap.Characteristic.Name, this.config.name || this.lock.description )
+            .setCharacteristic( hap.Characteristic.FirmwareRevision, this.lock.firmwareVersion );
+
+        this.listenToEvents();
+
+        // setInterval( () =>
+        //     this.getLock(),
+        // 5 * 1000 );
     }
 
+    @initiated
     private async getLock(): Promise<IGlueLockStatusResp> {
-        return this.client.get<IGlueLockStatusResp>( `/Locks/${this.lockID}` )
+        this.lock = await this.client.get<IGlueLockStatusResp>( `/v1/locks/${this.lockID}` )
             .then( resp => resp.data );
+        return this.lock;
     }
 
-    private async getBatteryLevel() {
+    @initiated
+    private async getBatteryLevel(): Promise<number> {
         return this.getLock()
-            .then( resp => resp.BatteryStatusAfter || resp.BatteryStatusBefore )
-            .then( batteryStatus => batteryStatus / 255 * 100 )
-            .then( batteryLevel => { this.log( `Battery level is ${batteryLevel}` ); return batteryLevel; } )
-            .catch( err => this.log( `Error getting battery level (status code ${( err.response || {} ).status}): '${err.message}'.` ) );
-    }
-
-    private async checkEvents() {
-        const [ events, types ] = await Promise.all( [
-            this.client.get<IGlueEventResponse>( '/Events/' )
-                .then( resp => resp.data.LockEvent )
-                .catch( _e => [] ),
-            this.eventTypes,
-        ] );
-
-        const lastEvent: IGlueEvent = events
-            .filter( ( { LockId, Created, EventTypeId } ) =>
-                LockId === this.lockID &&
-                new Date( Created + 'Z' ) > this.lastEventCheck &&
-                types[EventTypeId] && [ 'Locked', 'Unlocked' ].includes( types[EventTypeId].Description ) )
-            .sort( ( a, b ) => new Date( a.Created ) > new Date( b.Created ) ? -1 : 1 )
-            [ 0 ];
-
-        if ( !lastEvent ) return;
-        this.log( lastEvent );
-        const lastEventType = types[lastEvent.EventTypeId];
-        if ( lastEventType ) this.currentStatusOfLock = lockStateEnum[lastEventType.Description];
+            .then( lock => lock.batteryStatus )
+            .catch( err => {
+                this.log( `Error getting battery level ${err.message}.` );
+                return 0;
+            } );
     }
 }

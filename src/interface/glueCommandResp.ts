@@ -1,10 +1,17 @@
-export interface IGlueCommandResp {
-    Id: string;
-    Status: 1; // 1 === success
-}
+export enum LockOperationType {
+    Lock = 'lock',
+    Unlock = 'unlock',
+};
 
-// export interface ICommandErrorResp {
-//     ErrorMessage: string;
-//     ErrorCode: number;
-//     CustomText: unknown;
-// }
+export enum LockOperationStatus {
+    Pending = 'pending',
+    Completed = 'completed',
+    Timeout = 'timeout',
+    Failed = 'failed',
+};
+
+export interface IGlueCommandResp {
+    id: string;
+    status: LockOperationStatus;
+    reason?: string;
+}

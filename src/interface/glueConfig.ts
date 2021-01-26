@@ -1,10 +1,8 @@
-export interface IConfig {
-    username: string;
-    password: string;
-    'hub-id'?: string;
+import { AccessoryConfig } from 'homebridge';
+
+export interface IConfig extends AccessoryConfig {
+    username?: string;
+    password?: string;
+    'api-key'?: string;
     'lock-id'?: string;
-    url?: string;
-    name?: string;
-    'check-for-events'?: boolean;
-    'check-for-events-interval'?: number;
 }

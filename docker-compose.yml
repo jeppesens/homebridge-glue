@@ -1,0 +1,20 @@
+version: '2'
+services:
+  homebridge:
+    image: oznu/homebridge:latest
+    # container_name: homebridge
+    restart: always
+    # network_mode: host
+    environment:
+      - TZ=Europe/Stockhoolm
+      - PGID=1000
+      - PUID=1000
+      - HOMEBRIDGE_CONFIG_UI=1
+      - HOMEBRIDGE_CONFIG_UI_PORT=8080
+      - HOMEBRIDGE_DEBUG=1
+    volumes:
+      - ./homebridge:/homebridge
+      - ./:/node_modules/homebridge-glue/
+    ports:
+      - 8080:8080
+      - 53082:53082
