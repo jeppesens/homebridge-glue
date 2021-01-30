@@ -1,0 +1,67 @@
+{
+    "pluginAlias": "Glue",
+    "pluginType": "accessory",
+    "headerDisplay": "You must have a Glue lock with a hub and username password or api-key.",
+    "footerDisplay": "For info see [Github](https://github.com/jeppesens/homebridge-glue).",
+    "$id": "http://example.com/example.json",
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "default": {
+        "name": "Glue"
+    },
+    "description": "Config for homebridge-glue",
+    "examples": [
+        {
+            "name": "Glue",
+            "api-key": "a very long string"
+        }
+    ],
+    "oneOf": [
+        {
+            "required": ["name", "api-key"]
+        },
+        {
+            "required": ["name", "username", "password"]
+        }
+    ],
+    "title": "homebridge-glue config",
+    "type": "object",
+    "properties": {
+        "name": {
+            "$id": "#/properties/name",
+            "default": "Glue",
+            "description": "Required name of the accessory",
+            "examples": ["Glue"],
+            "title": "Name",
+            "type": "string"
+        },
+        "lock-id": {
+            "$id": "#/properties/lock-id",
+            "description": "Lock ID of the lock you wish to use this plugin with",
+            "examples": ["e1737204-132c-4c96-a8f7-0986ac88b736"],
+            "title": "Lock ID",
+            "type": "string"
+        },
+        "username": {
+            "$id": "#/properties/username",
+            "description": "Your username for Glue home",
+            "examples": ["your-email@example.com"],
+            "title": "Username",
+            "type": "string"
+        },
+        "password": {
+            "$id": "#/properties/password",
+            "description": "Password for Glue",
+            "examples": ["A-great-pa$$word"],
+            "title": "Password",
+            "type": "string"
+        },
+        "api-key": {
+            "$id": "#/properties/api-key",
+            "description": "The api key you got from the Glue API",
+            "examples": ["a very long string"],
+            "title": "API key",
+            "type": "string"
+        }
+    },
+    "additionalProperties": false
+}

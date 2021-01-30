@@ -1,6 +1,6 @@
 import { AccessoryPlugin, API, HAP, Logging, Service } from 'homebridge';
 
-import { HomebridgeLockStatus, LockEventsEnum } from './enum';
+import { HomebridgeLockStatus } from './enum';
 import axios, { AxiosInstance } from 'axios';
 import { IGlueApiKeyResp, IGlueApiKeysResp, IConfig, IGlueCommandResp, IGlueLockStatusResp, LockOperationType, LockOperationStatus, GlueEventType } from './interface';
 import { initiated } from './helpers';
@@ -262,15 +262,14 @@ class LockAccessory implements AccessoryPlugin {
 
         this.lockService
             .setCharacteristic( hap.Characteristic.Manufacturer, 'Jeppesen x Glue' )
-            .setCharacteristic( hap.Characteristic.SerialNumber, this.lock.serialNumber )
             .setCharacteristic( hap.Characteristic.Name, this.config.name || this.lock.description )
             .setCharacteristic( hap.Characteristic.FirmwareRevision, this.lock.firmwareVersion );
 
         this.listenToEvents();
 
-        // setInterval( () =>
-        //     this.getLock(),
-        // 5 * 1000 );
+        setInterval( () =>
+            this.getLock(),
+        5 * 1000 );
     }
 
     @initiated

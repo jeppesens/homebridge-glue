@@ -262,12 +262,12 @@ class LockAccessory {
             this.lockService
                 .setCharacteristic(hap.Characteristic.Manufacturer, 'Jeppesen x Glue')
                 .setCharacteristic(hap.Characteristic.SerialNumber, this.lock.serialNumber)
-                .setCharacteristic(hap.Characteristic.Name, this.config.name || this.lock.description)
+                // .setCharacteristic(hap.Characteristic.Name, this.config.name || this.lock.description)
                 .setCharacteristic(hap.Characteristic.FirmwareRevision, this.lock.firmwareVersion);
             this.listenToEvents();
-            // setInterval( () =>
-            //     this.getLock(),
-            // 5 * 1000 );
+            setInterval( () =>
+                this.getLock(),
+            5 * 1000 );
         });
     }
     getLock() {
