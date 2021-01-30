@@ -1,6 +1,6 @@
-import { AccessoryPlugin, API, HAP, Logging, Service } from 'homebridge';
+import { AccessoryPlugin, API, HAP, Logging, Service, CharacteristicEventTypes, CharacteristicGetCallback, CharacteristicSetCallback } from 'homebridge';
 
-import { HomebridgeLockStatus, LockEventsEnum } from './enum';
+import { HomebridgeLockStatus } from './enum';
 import axios, { AxiosInstance } from 'axios';
 import { IGlueApiKeyResp, IGlueApiKeysResp, IConfig, IGlueCommandResp, IGlueLockStatusResp, LockOperationType, LockOperationStatus, GlueEventType } from './interface';
 import { initiated } from './helpers';
@@ -22,6 +22,32 @@ class LockAccessory implements AccessoryPlugin {
 
     private _apiKey?: string;
     private _client?: AxiosInstance;
+    private _poller?: NodeJS.Timeout;
+
+    private setPolling( enable: boolean ): void {
+        if ( enable && !this._poller ) {
+            this._poller = setInterval( () =>
+                this.getLock(),
+            5 * 1000 );
+        } else if ( !enable && this._poller ) {
+            this.log.debug( 'Temporarily disabling poller' );
+            if ( this._poller )
+                try {
+                    clearInterval( this._poller );
+                    this._poller.unref();
+                    this._poller = undefined;
+                } catch ( e ) { this.log.debug( e ) }
+        }
+
+        if ( enable ) {
+            this.log.debug( 'Enabling poller for getting status' );
+        } else {
+            setTimeout( () => {
+                this.log.debug( 'Firing poller' );
+                this.setPolling( true );
+            }, 60 * 2 * 1000 );
+        }
+    }
 
     private get client(): AxiosInstance {
         if ( !this._client ) {
@@ -61,10 +87,10 @@ class LockAccessory implements AccessoryPlugin {
     }
     private _lock: IGlueLockStatusResp;
     private set lock( lock: IGlueLockStatusResp ) {
-        this.log.debug( `Setting lock to ${JSON.stringify( lock, null, 2 )}` );
         if ( lock.lastLockEvent && new Date( lock.lastLockEvent.eventTime ) > this.lastEvent ) {
+            this.log.debug( `Setting lock to ${JSON.stringify( lock, null, 2 )}` );
             this._lock = lock;
-            this.targetState = undefined;
+            this.targetState = this.currentState;
             this.lockService.setCharacteristic( hap.Characteristic.LockCurrentState, this.currentState );
             if ( this.lock.batteryStatus )
                 this.batteryService.setCharacteristic( hap.Characteristic.BatteryLevel, this.lock.batteryStatus );
@@ -76,11 +102,9 @@ class LockAccessory implements AccessoryPlugin {
     }
     private lockID: string;
     private targetState: HomebridgeLockStatus;
-    private getTargetState() {
-        return this.targetState;
-    }
     private lockService: Service = new hap.Service.LockMechanism( this.name );
     private batteryService: Service = new hap.Service.BatteryService( this.name );
+    private infoService: Service = new hap.Service.AccessoryInformation();
 
     constructor( private log: Logging, private readonly config: IConfig ) {
         if ( this.config['api-key'] )
@@ -92,60 +116,33 @@ class LockAccessory implements AccessoryPlugin {
         this.init();
     }
 
-    public getServices() {
-        return [this.lockService, this.batteryService];
+    public getServices(): Service[] {
+        return [
+            this.infoService,
+            this.lockService,
+            this.batteryService,
+        ];
     }
 
-    public getCharging( callback: ( err: Error, resp?: 0 ) => void ) {
-        callback( null, hap.Characteristic.ChargingState.NOT_CHARGING );
-    }
-
-
-    public getState( callback: ( err: Error, resp?: HomebridgeLockStatus ) => void ) {
-        let state: HomebridgeLockStatus;
+    private get currentState(): HomebridgeLockStatus {
         switch ( this.lock?.lastLockEvent?.eventType ) {
         case 'pressAndGo':
         case 'localLock':
         case 'manualLock':
         case 'remoteLock':
-            state = hap.Characteristic.LockCurrentState.SECURED;
-            break;
+            return hap.Characteristic.LockCurrentState.SECURED;
         case 'localUnlock':
         case 'manualUnlock':
         case 'remoteUnlock':
-            state = hap.Characteristic.LockCurrentState.UNSECURED;
-            break;
+            return hap.Characteristic.LockCurrentState.UNSECURED;
         case 'unknown':
         default:
-            state = hap.Characteristic.LockCurrentState.UNKNOWN;
+            return hap.Characteristic.LockCurrentState.UNKNOWN;
         }
-        callback( null, state );
     }
 
-    private get currentState(): HomebridgeLockStatus {
-        let val: HomebridgeLockStatus;
-        this.getState( ( err, vals ) => {
-            val = vals
-        } );
-        return val
-    }
-
-    @initiated
-    public async getBattery( callback: ( err: Error, resp?: number ) => void ) {
-        return this.getBatteryLevel()
-            .then( batteryLevel => callback( null, batteryLevel ) )
-            .catch( err => callback( err ) );
-    }
-
-    @initiated
-    public async getLowBattery( callback ) {
-        return this.getBatteryLevel()
-            .then( batteryLevel => ( batteryLevel >= 20 ) ? hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW )
-            .then( lowBattery => callback( null, lowBattery ) )
-            .catch( err => callback( err ) );
-    }
-
-    public async setState( command: HomebridgeLockStatus, callback: ( err: Error, resp?: undefined ) => void ) {
+    public async setState( command: HomebridgeLockStatus, callback: CharacteristicSetCallback ) {
+        this.setPolling( false );
         this.targetState = command;
         this.log.debug( `Set state to ${command === HomebridgeLockStatus.UNSECURED ? 'unlocked' : 'locked'}` );
         let callbackCalled = false;
@@ -157,7 +154,6 @@ class LockAccessory implements AccessoryPlugin {
                     eventType: command ? 'remoteLock' : 'remoteUnlock',
                 }
             } as any as IGlueLockStatusResp );
-            callback( null );
             callbackCalled = true;
         }
         await this.client.post<IGlueCommandResp>( `/v1/locks/${this.lockID}/operations`, {
@@ -165,6 +161,7 @@ class LockAccessory implements AccessoryPlugin {
         } )
             .then( resp => resp.data )
             .then( async ( { status, id } ) => {
+                callback( null );  // sent of to Glue
                 if ( status === LockOperationStatus.Completed ) { // Success
                     onSuccessfulChange()
                 } else {
@@ -193,25 +190,54 @@ class LockAccessory implements AccessoryPlugin {
                 callback( err );
                 return err.message;
             } );
+        this.setPolling( true );
+    }
+
+    private get batteryLevel(): number {
+        return this.lock?.batteryStatus || 0;
     }
 
     private listenToEvents() {
         this.lockService
             .getCharacteristic( hap.Characteristic.LockCurrentState )
-            .on( 'get', this.getState.bind( this ) );
+            .on( CharacteristicEventTypes.GET, ( callback: CharacteristicGetCallback ) => {
+                this.log.info( `Current state of the lock is ${this.currentState ? 'locked' : 'unlocked'}` );
+                callback( undefined, this.currentState );
+            } )
 
         this.lockService
             .getCharacteristic( hap.Characteristic.LockTargetState )
-            .on( 'get', this.getTargetState.bind( this ) )
-            .on( 'set', this.setState.bind( this ) );
+            .on( CharacteristicEventTypes.GET, ( callback: CharacteristicGetCallback ) => {
+                this.log.info( `Target state of the lock is ${this.currentState ? 'locked' : 'unlocked'}` );
+                callback( undefined, this.targetState );
+            } )
+            .on( CharacteristicEventTypes.SET, this.setState.bind( this ) );
 
         this.batteryService
             .getCharacteristic( hap.Characteristic.BatteryLevel )
-            .on( 'get', this.getBattery.bind( this ) );
+            .on( CharacteristicEventTypes.GET, ( callback: CharacteristicGetCallback ) => {
+                this.log.info( `Battery level is ${this.batteryLevel}%` )
+                callback( null, this.batteryLevel );
+            } );
 
         this.batteryService
             .getCharacteristic( hap.Characteristic.StatusLowBattery )
-            .on( 'get', this.getLowBattery.bind( this ) );
+            .on( CharacteristicEventTypes.GET, ( callback: CharacteristicGetCallback ) => {
+                const low = this.batteryLevel <= 20;
+                this.log.info( `Battery is ${low ? 'low' : 'normal'}` )
+                callback( null, low ? hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW );
+            } );
+
+        this.batteryService
+            .getCharacteristic( hap.Characteristic.ChargingState )
+            .on( CharacteristicEventTypes.GET, ( callback: CharacteristicGetCallback ) => {
+                callback( null, hap.Characteristic.ChargingState.NOT_CHARGING );
+            } );
+
+        this.infoService
+            .setCharacteristic( hap.Characteristic.Manufacturer, 'Jeppesen x Glue' )
+            .setCharacteristic( hap.Characteristic.SerialNumber, this.lock.serialNumber )
+            .setCharacteristic( hap.Characteristic.FirmwareRevision, this.lock.firmwareVersion );
     }
 
     private async getApiKey() {
@@ -259,18 +285,8 @@ class LockAccessory implements AccessoryPlugin {
                     this.lockID = lock.id;
                 } );
         await this.getLock();
-
-        this.lockService
-            .setCharacteristic( hap.Characteristic.Manufacturer, 'Jeppesen x Glue' )
-            .setCharacteristic( hap.Characteristic.SerialNumber, this.lock.serialNumber )
-            .setCharacteristic( hap.Characteristic.Name, this.config.name || this.lock.description )
-            .setCharacteristic( hap.Characteristic.FirmwareRevision, this.lock.firmwareVersion );
-
         this.listenToEvents();
-
-        // setInterval( () =>
-        //     this.getLock(),
-        // 5 * 1000 );
+        this.setPolling( true );
     }
 
     @initiated
@@ -278,15 +294,5 @@ class LockAccessory implements AccessoryPlugin {
         this.lock = await this.client.get<IGlueLockStatusResp>( `/v1/locks/${this.lockID}` )
             .then( resp => resp.data );
         return this.lock;
-    }
-
-    @initiated
-    private async getBatteryLevel(): Promise<number> {
-        return this.getLock()
-            .then( lock => lock.batteryStatus )
-            .catch( err => {
-                this.log( `Error getting battery level ${err.message}.` );
-                return 0;
-            } );
     }
 }

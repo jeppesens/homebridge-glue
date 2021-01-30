@@ -62,4 +62,6 @@ typings/
 
 *.js
 **.js.map
-/dist
+dist
+homebridge
+.homebridge

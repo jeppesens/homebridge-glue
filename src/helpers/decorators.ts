@@ -6,7 +6,7 @@ export function initiated(
 ) {
     const method = descriptor.value;
     descriptor.value = function () {
-        if ( !!( this as any )._apiKey && !!( this as any ).lockID )
+        if ( ( this as any )._apiKey && ( this as any ).lockID )
             return method.apply( this, arguments );
         else return Promise.reject( new Error( 'Not initiated yet' ) );
     };
