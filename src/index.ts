@@ -34,6 +34,8 @@ class LockAccessory implements AccessoryPlugin {
             if ( this._poller )
                 try {
                     clearInterval( this._poller );
+                    this._poller.unref();
+                    this._poller = undefined;
                 } catch ( e ) { this.log.debug( e ) }
         }
 
@@ -41,6 +43,7 @@ class LockAccessory implements AccessoryPlugin {
             this.log.debug( 'Enabling poller for getting status' );
         } else {
             setTimeout( () => {
+                this.log.debug( 'Firing poller' );
                 this.setPolling( true );
             }, 60 * 2 * 1000 );
         }
