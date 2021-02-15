@@ -92,8 +92,10 @@ class LockAccessory implements AccessoryPlugin {
             this._lock = lock;
             this.targetState = this.currentState;
             this.lockService.setCharacteristic( hap.Characteristic.LockCurrentState, this.currentState );
-            if ( this.lock.batteryStatus )
+            if ( this.lock.batteryStatus ) {
+                this.batteryLevel = this.lock.batteryStatus;
                 this.batteryService.setCharacteristic( hap.Characteristic.BatteryLevel, this.lock.batteryStatus );
+            }
             this.log.debug( `Set the lock to ${JSON.stringify( lock, null, 2 )}` );
         }
     }
@@ -193,9 +195,7 @@ class LockAccessory implements AccessoryPlugin {
         this.setPolling( true );
     }
 
-    private get batteryLevel(): number {
-        return this.lock?.batteryStatus || 0;
-    }
+    private batteryLevel: number = 0;
 
     private listenToEvents() {
         this.lockService
