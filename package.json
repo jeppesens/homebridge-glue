@@ -1,6 +1,6 @@
 {
     "name": "homebridge-glue",
-    "version": "3.0.5",
+    "version": "3.0.6",
     "description": "Glue Smart Lock integration for Homebridge",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
@@ -28,7 +28,8 @@
         "homebridge": ">=1.0.0"
     },
     "files": [
-        "dist"
+        "dist",
+        "config.schema.json"
     ],
     "devDependencies": {
         "@types/node": "^12.19.15",

@@ -195,7 +195,14 @@ class LockAccessory implements AccessoryPlugin {
         this.setPolling( true );
     }
 
-    private batteryLevel: number = 0;
+    private _batteryLevel: number = 0;
+    private get batteryLevel(): number {
+        return this._batteryLevel;
+    }
+    private set batteryLevel(level: number) {
+        this._batteryLevel = level;
+        this.batteryService
+    }
 
     private listenToEvents() {
         this.lockService
@@ -225,7 +232,7 @@ class LockAccessory implements AccessoryPlugin {
             .on( CharacteristicEventTypes.GET, ( callback: CharacteristicGetCallback ) => {
                 const low = this.batteryLevel <= 20;
                 this.log.info( `Battery is ${low ? 'low' : 'normal'}` )
-                callback( null, low ? hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW );
+                callback( null, low ? hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW : hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL );
             } );
 
         this.batteryService
